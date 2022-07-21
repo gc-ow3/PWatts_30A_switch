@@ -1,0 +1,14 @@
+set PROJ=board_verify
+set BIN_ROOT=.\build
+
+set DIR_TOOLS=%cd%\win\tools
+
+set COMPORT=5
+set TTYPORT=COM%COMPORT%
+
+set ADDR_BOOT=0x001000
+set ADDR_PART=0x00e000
+set ADDR_OTA=0x0fe000
+set SIZE_OTA=0x002000
+set ADDR_APP=0x100000
+set SIZE_APP=0x200000
