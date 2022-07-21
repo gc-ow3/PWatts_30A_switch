@@ -1,0 +1,22 @@
+#
+[COMM_LINUX]
+esp32_port = /dev/ttyUSB1
+if_wifi = wlp3s0
+if_eth = eno1
+serial1_port = /dev/ttyUSB1
+serial1_baud = 9600
+serial2_port = /dev/ttyUSB1
+serial2_baud = 9600
+
+[COMM_WIN]
+esp32_port = COM5
+if_wifi = Wi-Fi
+if_eth = "Ethernet 2"
+serial1_port = COM18
+serial1_baud = 9600
+serial2_port = COM18
+serial2_baud = 9600
+
+[BLE]
+svc_id = 9009
+
