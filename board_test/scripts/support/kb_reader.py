@@ -13,17 +13,21 @@ class kbReader():
 	def start(self):
 		self.thread.start()
 
-	def enable(self, enable):
-		if enable and not self.enabled:
-			# Read and discard any residual data
-			while self.inpQ.qsize() > 0:
-				self.inpQ.get()
-			# Enable reading data into the queue
-			self.enabled = True
-		elif not enable and self.enabled:
-			self.enabled = False
-			while self.inpQ.qsize() > 0:
-				self.inpQ.get()
+	def enable(self):
+		if self.enabled:
+			return
+		# Read and discard any residual data
+		while self.inpQ.qsize() > 0:
+			self.inpQ.get()
+		# Enable reading data into the queue
+		self.enabled = True
+
+	def disable(self):
+		if not self.enabled:
+			return
+		self.enabled = False
+		while self.inpQ.qsize() > 0:
+			self.inpQ.get()
 
 	def isEnabled(self):
 		return self.enabled

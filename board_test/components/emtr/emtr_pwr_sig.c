@@ -5,10 +5,32 @@
  *      Author: wesd
  */
 #include <esp_err.h>
+#include <esp_log.h>
 
+#include "cs_packer.h"
 #include "emtr_pwr_sig.h"
 
 static const char TAG[] = {"pwr_sig"};
+
+////////////////////////////////////////////////////////////////////////////////
+// Convenience macros
+////////////////////////////////////////////////////////////////////////////////
+
+// Sleep for a number of milliseconds
+#define	CS_SLEEP_MS(t)	vTaskDelay(pdMS_TO_TICKS(t))
+
+// Read number of seconds since boot
+#define	TIME_SEC()		(esp_timer_get_time()/1000000)
+#define	TIME_MS()		(esp_timer_get_time()/1000)
+
+// Acquire and release mutex
+#define MUTEX_GET(ctrl)		xSemaphoreTake((ctrl)->mutex, portMAX_DELAY)
+#define MUTEX_PUT(ctrl)		xSemaphoreGive((ctrl)->mutex)
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Internal data types
+////////////////////////////////////////////////////////////////////////////////
 
 /**
  * \brief States for the power signature state machine
@@ -40,6 +62,8 @@ typedef struct {
 	bool				isRunning;
 	pwrSigState_t		state;
 	uint8_t				cksum;
+	uint64_t			curTimeMs;
+	uint32_t			curTime;
 	uint64_t			startTimeMs;
 	pwrSigMeta_t		meta;
 	uint8_t				recvBuf[256];
@@ -53,10 +77,18 @@ typedef struct {
 	uint32_t			sigCount;
 } taskCtrl_t;
 
+
+////////////////////////////////////////////////////////////////////////////////
+// Local functions
+////////////////////////////////////////////////////////////////////////////////
 static void pwrSigTask(void * params);
 
 
+////////////////////////////////////////////////////////////////////////////////
+// Local variables
+////////////////////////////////////////////////////////////////////////////////
 static taskCtrl_t*	taskCtrl;
+
 
 esp_err_t pwrSigInit(pwrSigConf_t* conf)
 {
@@ -478,12 +510,8 @@ static void handlePwrData(taskCtrl_t* pCtrl, uint8_t * data, int len)
 				pCtrl->payLoadType = pwrPayloadType_sig;
 				break;
 
-			case 'T':
-				pCtrl->payLoadType = pwrPayloadType_tst;
-				break;
-
 			default:
-				ESP_LOGE(TAG, "pwrSig: Expected 'S' or 'T', got 0x%02x", *data);
+				ESP_LOGE(TAG, "pwrSig: Expected 'S', got 0x%02x", *data);
 				pCtrl->state = pwrSigState_idle;
 				break;
 			}
@@ -494,7 +522,7 @@ static void handlePwrData(taskCtrl_t* pCtrl, uint8_t * data, int len)
 			pCtrl->cksum ^= *data;
 
 			// Update the payload length
-			pCtrl->payloadLen = (pCtrl) + (uint16_t)*data;
+			pCtrl->payloadLen = (pCtrl->payloadLen << 8) + (int)*data;
 			if (++pCtrl->rxLen == 2) {
 				//ESP_LOGD(TAG, "Payload length = %d", pwr->payloadLen);
 
@@ -509,12 +537,6 @@ static void handlePwrData(taskCtrl_t* pCtrl, uint8_t * data, int len)
 						ESP_LOGE(TAG, "pwrSig: Payload length (%d) too small", pCtrl->payloadLen);
 						pCtrl->state = pwrSigState_idle;
 					}
-					break;
-
-				case pwrPayloadType_tst:
-					// Set up to receive the system test result
-					pCtrl->rxLen = 0;
-					pCtrl->state = pwrSigState_recvTestResult;
 					break;
 
 				default:
@@ -599,13 +621,9 @@ static void handlePwrData(taskCtrl_t* pCtrl, uint8_t * data, int len)
 					// Unpack the meta data from the header
 					pwrSigUnpackMeta(pCtrl);
 					// Send the signature to the eagerly awaiting client
-					if (pCtrl->cbFunc) {
-						pCtrl->cbFunc(&pCtrl->meta, pCtrl->sigBuf, pCtrl->rxLen, pCtrl->cbData);
+					if (pCtrl->conf.cbFunc) {
+						pCtrl->conf.cbFunc(&pCtrl->meta, pCtrl->sigBuf, pCtrl->rxLen, pCtrl->conf.cbData);
 					}
-					break;
-
-				case pwrPayloadType_tst:
-					// ToDo ?
 					break;
 
 				default:
@@ -632,3 +650,23 @@ static void handlePwrData(taskCtrl_t* pCtrl, uint8_t * data, int len)
 }
 
 
+static void pwrSigTask(void * params)
+{
+	taskCtrl_t*	pCtrl  = (taskCtrl_t*)params;
+
+	pCtrl->state = pwrSigState_idle;
+
+	while (1)
+	{
+		CS_SLEEP_MS(20);
+		pCtrl->curTimeMs = TIME_MS();
+		pCtrl->curTime = (uint32_t)(pCtrl->curTimeMs / 1000);
+
+		// Check for incoming from the data channel
+		int	rdLen;
+		do {
+			rdLen = uart_read_bytes(pCtrl->conf.port, pCtrl->recvBuf, sizeof(pCtrl->recvBuf), 0);
+			handlePwrData(pCtrl, pCtrl->recvBuf, rdLen);
+		} while (rdLen > 0);
+	}
+}

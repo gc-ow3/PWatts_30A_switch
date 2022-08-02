@@ -1,7 +1,6 @@
 set(srcs
   "led_drv.c"
   "inp_drv.c"
-  "cs_emtr_drv.c"
 )
 
 set(include_dirs "include")

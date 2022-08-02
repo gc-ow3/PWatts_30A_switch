@@ -1,5 +1,4 @@
 /*
- * ww_pump_drv.h
  *
  *  Created on: Jan 18, 2019
  *      Author: wesd
@@ -8,9 +7,10 @@
 #ifndef COMPONENTS_APP_DRIVER_INCLUDE_APP_EMTR_DRV_H_
 #define COMPONENTS_APP_DRIVER_INCLUDE_APP_EMTR_DRV_H_
 
-#include "driver/uart.h"
-#include "cJSON.h"
+#include <driver/uart.h>
+#include <cJSON.h>
 
+//#include "event_callback.h"
 #include "cs_emtr_drv.h"
 
 #ifdef __cplusplus
@@ -48,11 +48,10 @@ typedef struct {
 	struct {
 		appEmtrState_t	value;
 		const char *	str;
-	}					pumpState;
+	}					relayState;
 	struct {
 		appEmtrAlarm_t	flags;
 	}					alarm;
-	bool				pwrSigUpdated;
 } appEmtrStatus_t;
 
 
@@ -82,7 +81,6 @@ typedef enum {
 	appEmtrEvtCode_null = 0,
 	appEmtrEvtCode_state,
 	appEmtrEvtCode_temperature,
-	appEmtrEvtCode_pwrSig,
 	appEmtrEvtCode_dVolts,
 } appEmtrEvtCode_t;
 
@@ -93,13 +91,10 @@ typedef union {
 		appEmtrTotals_t	totals;
 	} state;
 	struct {
-		pwrSigMeta_t *	pMeta;
-	} pwrSig;
-	struct {
 		uint8_t		value;
 	} temperature;
 	struct {
-		uint16_t			value;
+		uint16_t	value;
 	} dVolts;
 } appEmtrEvtData_t;
 
@@ -107,6 +102,8 @@ typedef union {
 esp_err_t appEmtrDrvInit(void);
 
 esp_err_t appEmtrDrvStart(void);
+
+//esp_err_t appEmtrDrvCallbackRegister(eventCbFunc_t cbFunc, uint32_t cbData);
 
 esp_err_t appEmtrDrvGetInstValues(appEmtrInstant_t * ret);
 

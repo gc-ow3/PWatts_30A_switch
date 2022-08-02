@@ -206,158 +206,156 @@ def cpuReadId():
 	else:
 		return None
 
-def buttonRead() -> bool:
-	resp = sendCommand("BUTTON-READ", 5)
+def emtrReadVersion(comPort=None, dbug=False):
+	resp = sendCommand("EMTR-READ-VER", 2, comPort=comPort, dbug=dbug)
+	#print(f"READ-EMTR-VER response: {resp}")
 	if "FAIL" == resp:
 		return None
 	lines = resp.split("\r\n")
-
+	#print(lines)
 	if lines[-1] != "OK":
+		#print(resp)
 		return None
-	if lines[-2].startswith("BTN:0"):
+	vers = lines[1].split(",")
+	if len(vers) != 2:
+		return None
+	return {"blVer" : vers[0][3:].strip(), "fwVer" : vers[1][3:].strip()}
+
+def emtrReadEnergy(comPort=None):
+	resp = sendCommand("EMTR-READ-ENERGY", 2, comPort=comPort)
+	if "FAIL" == resp:
+		return None
+
+	ln = resp.split("\r\n")
+	if 3 == len(ln) and "OK" == ln[2].strip():
+		eData = ln[1].strip().split(",")
+		# 0 volts
+		# 1 amps
+		# 2 watts
+		# 3 power factor 
+		# 4 seconds powered
+		# 5 seconds triacs on
+		return {"volts" : float(eData[0]), "amps" : float(eData[1])}
+
+	return None
+
+
+def emtrSetGain(uGain, iGain) -> bool:
+	if not sendCommandNoResp(f"EMTR-SET-U-GAIN {uGain}", 2):
 		return False
-	elif lines[-2].startswith("BTN:1"):
-		return True
-	else:
-		return None
-
-def atcaSnRead():
-	resp = sendCommand("ATCA-SN-READ", 2)
-	if "FAIL" == resp:
-		return None
-	lines = resp.split("\r\n")
-	if lines[-1] != "OK":
-		return None
-	return lines[-2].strip()
-
-def eepromInfoRead():
-	resp = sendCommand("EEPROM-INFO", 2)
-	if "FAIL" == resp:
-		return None
-	lines = resp.split("\r\n")
-	if lines[-1] != "OK":
-		return None
-	return lines[-2].strip()
-
-def eepromInfoSet(serNum):
-	sn = f"{int(serNum):06}"
-	tm = time.localtime()
-	tStamp = f"{tm.tm_year}-{tm.tm_mon:02}-{tm.tm_mday:02}"
-
-	tries = 0
-	while not sendCommandNoResp(f"EEPROM-SET KA1-{sn} {tStamp}", 2):
-		if tries == 4:
-			print("Failed to set EEPROM info")
-			return False
-		tries += 1
-		time.sleep(1)
+	if not sendCommandNoResp(f"EMTR-SET-I-GAIN {iGain}", 2):
+		return False
 	return True
 
-def getMacAddress(ifname):
-	if "Linux" == sysName:
-		s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-		info = fcntl.ioctl(s.fileno(), 0x8927, struct.pack('256s', ifname.encode()))
-		s.close()
-		return info[18:24]
-	elif "Windows" == sysName:
-		return bytes.fromhex(gma().replace(':', ''))
-	else:
+def emtrSaveCalibration():
+	return sendCommandNoResp("EMTR-SAVE-CAL", 5):
+
+def emtrReadCalibration(comPort=None):
+	resp = sendCommand("EMTR-READ-CAL", 2, comPort=comPort)
+	if "FAIL" == resp:
 		return None
 
-ethProto = b"\x70\x90"
+	ln = resp.split("\r\n")
+	if 3 == len(ln) and "OK" == ln[2].strip():
+		cal = ln[1].strip().split(",")
+		# 0 u_gain
+		# 1 i_gain
+		# 2 hcci
+		return {
+			"u_gain" : round(float(cal[0]), 4),
+			"i_gain" : round(float(cal[1]), 4),
+			"hcci"   : int(cal[2]),
+			}
 
-def buildEthTestPacket(testData):
-	myMac = getMacAddress(iface_eth)
+	return None
 
-	# Build the transmit Ethernet packet
-	# start with broadcast address
-	txData  =  6 * b"\xff"
-	# Add our Ethernet MAC address
-	txData += myMac
-	# Add the magic protocol number 0x7090
-	txData += ethProto
-	# Add test data
-	txData += testData
-	return txData
+def rdInput(tDesc):
+	cmd = f"INPUT-READ {tDesc['name']}"
+	resp = sendCommand(cmd, 2)
+	if "FAIL" == resp:
+		return None
+	lines = resp.split("\r\n")
 
-def tstEthernetLinux(myMac, testData) -> bool:
-	# Because socket doesn't define this
-	ETH_P_ALL = 3
+	if lines[-1] != "OK":
+		return None
 
-	sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(ETH_P_ALL))
-	sock.bind((iface_eth, 0))
+	try:
+		payload = json.loads(lines[-2].strip())
+	except:
+		return None
 
-	txData = buildEthTestPacket(testData)
-	sock.sendall(txData)
-	rxData = sock.recv(1514)
+	return payload['active']
 
-	if rxData[0:6] == myMac[0:6] and rxData[12:14] == ethProto[0:2] and rxData[14:] == testData:
-		ret = True
-		print("  Test passed")
-	else:
-		ret = False
-		print("  Test failed")
-		print(f"    dst  : {rxData[0]:02x}:{rxData[1]:02x}:{rxData[2]:02x}:{rxData[3]:02x}:{rxData[4]:02x}:{rxData[5]:02x}")
-		print(f"    src  : {rxData[6]:02x}:{rxData[7]:02x}:{rxData[8]:02x}:{rxData[9]:02x}:{rxData[10]:02x}:{rxData[11]:02x}")
-		print(f"    proto: {rxData[12]:02x}{rxData[13]:02x}")
-		print(f"    data : {rxData[14:]}")
+''' Input test descriptors '''
+inpTestDesc = [
+	{"title": "Button 1", "name": "BTN1"},
+	{"title": "Button 2", "name": "BTN2"},
+	{"title": "Switch 1", "name": "SW1"},
+]
 
+def inpTest(tDesc):
+	print(f"Test {tDesc['name']}")
+
+	# Initial read should be inactive
+	rd = readInput(param)
+	if rd is None:
+		return False
+	elif rd:
+		print("  Input is active when it should be not active")
+		return False
+
+	print("  >>>>> Activate the input, or enter Q to skip <<<<<")
+	kb.enable(True)
+	ret = False
+	while True:
+		if kb.get() in ["Q", "q"]:
+			break
+		x = rdInp()
+		if x is None:
+			break
+		elif x:
+			ret = True
+			break
+		else:
+			time.sleep(0.25)
+	kb.enable(False)
 	return ret
 
 
-def tstEthernetWin(myMac, testData) -> bool:
-	# Using the scapy library
-	ifaceEth = "Ethernet 2"
-	#ifaceEth = IFACES.dev_from_index(12)
-	print(f"ifaceEth {ifaceEth}")
-	sock = conf.L2socket(iface=ifaceEth)
+def doTest(kb, arg):
+	ret = cpuReadId()
+	print(f"cpuId: {ret}")
+	if ret is None:
+		return 1
 
-	txData = buildEthTestPacket(testData)
-	sock.send(txData)
+	print("Input tests")
+	for t in inpTestDesc:
+		if not inpTest(t):
+			return 1
 
-	rxPkt = sock.recv(1514)
+	print("LED test")
+	for led in ["SYS", "BLE"]:
+		for step in ["RED", "GRN", "BLU", "OFF"]:
+			cmd = f"LED-{led}-SET {step}"
+			ret = sendCommandNoResp(cmd, 2)
+			if ret is None or not ret:
+				return 1
+			time.sleep(0.25)
 
-	if rxPkt.dst == myMac[0:6] and rxPkt.type == ethProto[0:2] and bytes(rxPkt.payload) == testData:
-		ret = True
-		print("  Test passed")
+	print("Test done")
+	return 0
+
+def tstBoard(kb, arg) -> int:
+	ret = doTest(arg)
+
+	print("")
+	if 0 == ret:
+		print(">>>> PASS <<<<<")
 	else:
-		ret = False
-		print("  Test failed")
-		print(f"    dst  : {rxPkt.dst}")
-		print(f"    src  : {rxPkt.src}")
-		print(f"    proto: {rxPkt.type:04X}")
-		print(f"    data : {bytes(rxPkt.payload)}")
+		print(">>>>> FAIL <<<<<")
+	print("")
 
 	return ret
-
-def tstEthernet() -> bool:
-	if sysName == "Linux":
-		tstFunc = tstEthernetLinux
-	elif sysName == "Windows":
-		tstFunc = tstEthernetWin
-	else:
-		print(f"Ethernet test not implemented for {sysName}")
-		return False
-
-	myMac = getMacAddress(iface_eth)
-	if myMac is None:
-		return False
-
-	print("Turn on Ethernet")
-	ret = sendCommandNoResp("ETH-START", 5)
-	if ret is None or not ret:
-		return False
-
-	testData = 10 * b"This is a test!\n"
-
-	passed = tstFunc(myMac, testData)
-
-	print("Turn off Ethernet")
-	ret = sendCommandNoResp("ETH-STOP", 5)
-	if ret is None or not ret:
-		return False
-
-	return passed
 
 async def bleScan(target):
 	devList = await BleakScanner.discover()
@@ -366,14 +364,14 @@ async def bleScan(target):
 			return (d.name, d.address, d.rssi)
 	return None
 
-def tstBle() -> bool:
+def tstBle(arg) -> bool:
 	print("Turn on BLE")
 	ret = sendCommandNoResp(f"BLE-ON 0x{bleSvcId}", 5)
 	if ret is None or not ret:
 		print("  Failed")
 		return False
 
-	target = f"AQUARIAN-{bleSvcId}"
+	target = f"PWATTS-{bleSvcId}"
 	print(f"Listen for {target}")
 	match = asyncio.run(bleScan(target))
 
@@ -391,83 +389,6 @@ def tstBle() -> bool:
 		print(f"BLE name '{target}' not found")
 		return False
 
-def doTest(kb, arg):
-	ret = cpuReadId()
-	print(f"cpuId: {ret}")
-	if ret is None:
-		return 1
-
-	ret = sendCommandPassFail("EEPROM-TEST", 2)
-	print(f"EERPOM test: {ret}")
-	if ret is None or not ret:
-		return 1
-
-	if not eepromInfoSet(arg.sernum):
-		return 1
-
-	ret = eepromInfoRead()
-	print(f"INFO: {ret}")
-	if ret is None:
-		return 1
-
-	ret = sendCommandPassFail("IOX-TEST", 2)
-	print(f"IOX test: {ret}")
-	if ret is None or not ret:
-		return 1
-
-	ret = sendCommandPassFail("ATCA-TEST", 2)
-	print(f"ATCA test: {ret}")
-	if ret is None or not ret:
-		return 1
-
-	ret = atcaSnRead()
-	print(f"ATCA SN: {ret}")
-	if ret is None:
-		return 1
-
-	ret = sendCommandPassFail("ADC-TEST", 2)
-	print(f"ADC test: {ret}")
-	if ret is None or not ret:
-		return 1
-
-	print("Button test")
-	ret = buttonRead()
-	if ret is None:
-		print("Failed to read button")
-		return 1
-	elif ret:
-		print("  Button is stuck")
-		return 1
-
-	print("  >>>>> Press the button, or enter Q to skip <<<<<")
-	kb.enable(True)
-	ret = False
-	while not ret:
-		if "Q" in kb.get():
-			return 1
-		x = buttonRead()
-		if x is None:
-			return 1
-		elif x:
-			ret = True
-		else:
-			time.sleep(0.25)
-	kb.enable(False)
-
-	print("LED test")
-	for led in ["SYS", "BLE"]:
-		for step in ["RED", "GRN", "BLU", "OFF"]:
-			cmd = f"LED-{led}-SET {step}"
-			ret = sendCommandNoResp(cmd, 2)
-			if ret is None or not ret:
-				return 1
-			time.sleep(0.25)
-
-	tstEthernet()
-
-	print("Test done")
-	return 0
-
 userHalt = False
 def sigHandler(sigNum, frame):
 	global userHalt
@@ -476,153 +397,13 @@ def sigHandler(sigNum, frame):
 		print(f"Signal {sigNum} caught - Halting")
 	sys.exit(0)
  
-def handleBoard(kb, arg) -> int:
-	ret = doTest(kb, arg)
-
-	print("")
-	if 0 == ret:
-		print(">>>> PASS <<<<<")
-	else:
-		print(">>>>> FAIL <<<<<")
-	print("")
-
-	return ret
-
-def handleADC(arg) -> int:
-	lineCt = 0
-	cmd = "ADC-READ-ALL"
-	while not userHalt:
-		ret = sendCommand(cmd, 2)
-		if ret is None or ret == "FAIL":
-			print("Command execution failed")
-		else:
-			lines = ret.split("\r\n")
-			if lines[-1] == "OK":
-				if lineCt % 10 == 0:
-					print("")
-					print("  PRESS1      PRESS2      PRESS3      PRESS4       TEMP        COND")
-					print(" RAW   CAL   RAW   CAL   RAW   CAL   RAW   CAL   RAW   CAL   RAW   CAL  ")
-					print("----  ----  ----  ----  ----  ----  ----  ----  ----  ----  ----  ----")
-				x = json.loads(lines[-2])
-				# As of board test firware 1.20.0 ADC-READ-ALL returns JSON in this form:
-				# [[ch0_ADC_Raw, ch0_mvRaw, ch0_ADC_Cal, ch0_mvCal], [ch1_XXX, ...], ...]
-				for i in range(6):
-					print(f"{x[i][0]:4}  {x[i][2]:4}  ", end="")
-				print("")
-				lineCt += 1
-			else:
-				print(f"{cmd} failed")
-			time.sleep(2)
-	return 0
-
-def handleDigi(arg) -> int:
-	lineCt = 0
-	cmd = "DIGI-READ-ALL"
-	while not userHalt:
-		ret = sendCommand(cmd, 2)
-		if ret is None or ret == "FAIL":
-			print("Command execution failed")
-		else:
-			lines = ret.split("\r\n")
-			if lines[-1] == "OK":
-				if lineCt % 10 == 0:
-					print("")
-					print("   FLOW1     FLOW2     FLOW3")
-					print("--------  --------  --------")
-				x = json.loads(lines[-2])
-				print(f"{x[0]:8}  {x[1]:8}  {x[2]:8}")
-				lineCt += 1
-			else:
-				print(f"{cmd} failed")
-			time.sleep(2)
-	return 0
-
-def serialTest(portName, baud) -> bool:
-	sendData = "This is the serial port test\n"
-
-	try:
-		 port = serial.Serial(portName, baud, timeout=0.5)
-	except:
-		print(f"Failed to open serial port '{portName}'")
-		return False
-
-	port.write(sendData.encode('UTF-8'))
-	sleep(0.1)
-	rxData = port.readline().decode('UTF-8')
-
-	port.close()
-
-	if len(rxData) == 0:
-		print(f"Serial test on {portName} received no data")
-		return False
-	if rxData == sendData:
-		return True
-	else:
-		print(f"Serial test on {portName} received wrong data: {rxData}")
-		return False
-
-def tstSerial1(arg) -> bool:
-	'''Serial 1 loopback test'''
-	if not sendCommandNoResp(f"SER-TEST --chan 1 --baud {arg.baud} --mode loop", 2):
-		return False
-	ret = serialTest(portSerial1, arg.baud)
-	sendCommandNoResp(f"SER-TEST --chan 1 --mode off", 2)
-	return ret
-
-def tstSerial2(arg) -> bool:
-	'''Serial 2 loopback test'''
-	if not sendCommandNoResp(f"SER-TEST --chan 2 --baud {arg.baud} --mode loop", 2):
-		return False
-	ret = serialTest(portSerial2, arg.baud)
-	sendCommandNoResp(f"SER-TEST --chan 2 --mode off", 2)
-	return ret
-
-def spySerial(arg, kb) -> bool:
-	sendCommandNoResp(f"SER-TEST --chan {arg.port} --baud {arg.baud} --mode spy", 2)
-	lineCt = 0
-	print("Enter 'Q' to quit")
-	kb.enable(True)
-	while kb.get() not in ['Q', 'q']:
-		sleep(0.1)
-		while True:
-			rxData = esp32Port.read().decode('UTF-8')
-			if len(rxData) > 0:
-				print(rxData, end="")
-				if '\n' in rxData:
-					lineCt += 1
-					if lineCt % 20 == 0:
-						print("Enter 'Q' to quit")
-			else:
-				break
-	kb.enable(False)
-	sendCommandNoResp(f"SER-TEST --chan {arg.port} --mode off", 2)
-	return True
-
 def main():
 	parser = argparse.ArgumentParser()
-	subParse = parser.add_subparsers(dest="mode", help="Test mode")
+	subParse = parser.add_subparsers(dest="mode", choices=["board", "ble"], help="Test mode")
 
 	brdTest = subParse.add_parser("board", help="Test all board functions")
-	brdTest.add_argument(
-		"sernum",
-		help="Board serial number - will be written to EEPROM"
-	)
 
 	bleTest = subParse.add_parser("ble", help="Test BLE")
-
-	bleTest = subParse.add_parser("eth", help="Test Ethernet")
-
-	adcTest = subParse.add_parser("adc", help="Poll and report ADC readings")
-
-	digiTest = subParse.add_parser("digi", help="Poll and report digital readings")
-
-	serLoopTest = subParse.add_parser("ser_loop", help="Serial loopback test")
-	serLoopTest.add_argument("--baud", type=int, default=9600, help="Baud rate (default 9600)")
-	serLoopTest.add_argument("port", type=int, choices=[1,2], help="Port number: 1 or 2")
-
-	serSpyTest = subParse.add_parser("ser_spy", help="Serial spy")
-	serSpyTest.add_argument("--baud", type=int, default=9600, help="Baud rate (default 9600)")
-	serSpyTest.add_argument("port", type=int, choices=[1,2], help="Port number: 1 or 2")
 
 	arg = parser.parse_args()
 
@@ -639,56 +420,18 @@ def main():
 	if ret is None:
 		return 1
 
-	minVersion = "1.20.0"
+	minVersion = "0.1.0"
 	if version.parse(ret) < version.parse(minVersion):
 		print(f"Board test firmware version {minVersion} or higher is required")
 		return 1
-
-	'''
-	needAdmin = False
-
-	# ToDo Identify any test modes requiring admin privileges
-
-	if needAdmin and not isAdmin:
-		print("Must run as administrator")
-		return 1
-	'''
 
 	kb = kbReader()
 	kb.start()
 
 	if arg.mode == "board":
-		ret = handleBoard(kb, arg)
-	elif arg.mode == "adc":
-		ret = handleADC(arg)
-	elif arg.mode == "digi":
-		ret = handleDigi(arg)
+		ret = tstBoard(kb, arg)
 	elif arg.mode == "ble":
-		ret = tstBle()
-	elif arg.mode == "eth":
-		ret = tstEthernet()
-	elif arg.mode == "ser_loop":
-		print(f"UART{arg.port} Loopback Test")
-		if 1 == arg.port:
-			if tstSerial1(arg):
-				print("  PASS")
-				ret = 0
-			else:
-				print("  FAIL")
-				ret = 1
-		elif 2 == arg.port:
-			if tstSerial2(arg):
-				print("  PASS")
-				ret = 0
-			else:
-				print("  FAIL")
-				ret = 1
-	elif arg.mode == "ser_spy":
-		print(f"UART{arg.port} Spy Test")
-		if spySerial(arg, kb):
-			ret = 0
-		else:
-			ret = 1
+		ret = tstBle(arg)
 	else:
 		print(f"Test mode '{arg.mode}' not implemented")
 		ret = 1

@@ -9,9 +9,11 @@
 #include <driver/uart.h>
 #include <esp_err.h>
 #include <esp_log.h>
-#include "pinout.h"
 
+#include "pinout.h"
+#include "cs_common.h"
 #include "cs_packer.h"
+//#include "event_callback.h"
 #include "app_emtr_drv.h"
 
 static const char TAG[] = {"app_emtr_drv"};
@@ -21,44 +23,47 @@ static const char TAG[] = {"app_emtr_drv"};
 ////////////////////////////////////////////////////////////////////////////////
 
 // Sleep for a number of milliseconds
-#define	CS_SLEEP_MS(t)			vTaskDelay(pdMS_TO_TICKS(t))
+#define	CS_SLEEP_MS(t)	vTaskDelay(pdMS_TO_TICKS(t))
 
 // Read number of seconds since boot
-#define	TIME_SEC()				(esp_timer_get_time()/1000000)
-#define	TIME_MS()				(esp_timer_get_time()/1000)
+#define	TIME_SEC()		(esp_timer_get_time()/1000000)
+#define	TIME_MS()		(esp_timer_get_time()/1000)
 
 // Acquire and release mutex
-#define MUTEX_GET(ctrl)		xSemaphoreTake((ctrl)->mutex, portMAX_DELAY)
-#define MUTEX_PUT(ctrl)		xSemaphoreGive((ctrl)->mutex)
+#define MUTEX_GET(ctrl)	xSemaphoreTake((ctrl)->mutex, portMAX_DELAY)
+#define MUTEX_PUT(ctrl)	xSemaphoreGive((ctrl)->mutex)
 
 ////////////////////////////////////////////////////////////////////////////////
 // Defines
 ////////////////////////////////////////////////////////////////////////////////
 
 // EMTR message framing characters
-#define MSG_CHAR_SOP				((uint8_t)0x1B)
-#define MSG_CHAR_EOP				((uint8_t)0x0A)
+#define MSG_CHAR_SOP		((uint8_t)0x1B)
+#define MSG_CHAR_EOP		((uint8_t)0x0A)
 
 // General command codes
-#define CMD_GET_FW_ID				(0x00)
-#define CMD_GET_STATUS				(0x01)
+#define CMD_GET_FW_ID		(0x00)
+#define CMD_GET_STATUS		(0x01)
 
 // Reading data
-#define CMD_GET_TOTALS				(0x02)
-#define CMD_GET_INST_VALUES			(0x03)
+#define CMD_GET_TOTALS		(0x02)
+#define CMD_GET_INST_VALUES	(0x03)
+
+// Controlling power
+//#define CMD_SET_RELAY		(0x04)	// ToDo
 
 // Test commands
-#define CMD_SELF_TEST_START			(0x11)
-#define CMD_SET_TEST_MODE			(0x12)
+//#define CMD_SELF_TEST_START	(0x11)
+//#define CMD_SET_TEST_MODE	(0x12)
 
 // Calibration
 #define CMD_CAL_GET				(0x0D)
 #define CMD_CAL_SET				(0x0E)
 #define CMD_SET_U_GAIN			(0x1A)
 #define CMD_SET_I_GAIN			(0x1B)
-#define CMD_READ_I_LEAK			(0x40)
-#define CMD_SET_0P1_MA_LEAK		(0x41)
-#define CMD_SET_1P0_MA_LEAK		(0x42)
+//#define CMD_READ_I_LEAK			(0x40)
+//#define CMD_SET_0P1_MA_LEAK		(0x41)
+//#define CMD_SET_1P0_MA_LEAK		(0x42)
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -74,6 +79,7 @@ typedef struct {
 	uint64_t			curTimeMs;
 	csEmtrDrvConf_t		emtrConf;
 	SemaphoreHandle_t	mutex;
+	//cbHandle_t			cbHandle;
 	appEmtrStatus_t		curDeviceStatus;
 	appEmtrStatus_t		preDeviceStatus;
 	appEmtrInstant_t	preInstEnergy;
@@ -100,13 +106,6 @@ static esp_err_t readStatus(drvCtrl_t * pCtrl, appEmtrStatus_t * ret);
 static esp_err_t readTotals(drvCtrl_t * pCtrl, appEmtrTotals_t * ret);
 
 static esp_err_t readInstValues(drvCtrl_t * pCtrl, appEmtrInstant_t * ret);
-
-static esp_err_t startSelfTest(void);
-
-static void pwrSigTask(void * params);
-
-static esp_err_t pwrSigUartInit(uart_port_t port, uart_config_t * conf);
-
 
 ////////////////////////////////////////////////////////////////////////////////
 // Constant data
@@ -205,6 +204,12 @@ esp_err_t appEmtrDrvInit(void)
 		goto exitMem;
 	}
 
+#if 0
+	if ((status = eventRegisterCreate(&pCtrl->cbHandle)) != ESP_OK) {
+		goto exitMem;
+	}
+#endif
+
 	// Set up the EMTR driver configuration
 	pCtrl->emtrConf = emtrDrvConfInit;
 
@@ -227,7 +232,6 @@ esp_err_t appEmtrDrvInit(void)
 exitMem:
 	// Release allocate resources
 	free(pCtrl);
-
 	return status;
 }
 
@@ -263,12 +267,31 @@ esp_err_t appEmtrDrvStart()
 		return status;
 	}
 
-	BaseType_t	xStatus;
-
 	// The driver is running
 	pCtrl->isRunning = true;
 	return ESP_OK;
 }
+
+
+#if 0
+/**
+ * \brief Register to be notified of driver events
+ */
+esp_err_t appEmtrDrvCallbackRegister(eventCbFunc_t cbFunc, uint32_t cbData)
+{
+	if (!cbFunc) {
+		return ESP_ERR_INVALID_ARG;
+	}
+
+	drvCtrl_t *	pCtrl = drvCtrl;
+	if (!pCtrl) {
+		// Not initialized
+		return ESP_ERR_INVALID_STATE;
+	}
+
+	return eventRegisterCallback(pCtrl->cbHandle, cbFunc, cbData);
+}
+#endif
 
 
 /**
@@ -352,6 +375,7 @@ esp_err_t appEmtrDrvGetTotals(appEmtrTotals_t * ret)
 }
 
 
+#if 0	// ToDo Remove or update
 esp_err_t pwEmtrDrvFactoryTest(appEmtrTestId_t testId, uint8_t duration)
 {
 	if (0 == duration) {
@@ -373,7 +397,7 @@ esp_err_t pwEmtrDrvFactoryTest(appEmtrTestId_t testId, uint8_t duration)
 
 	return csEmtrDrvCommand(CMD_SET_TEST_MODE, payload, resp, &ioLen);
 }
-
+#endif
 
 const char * appEmtrDrvStateStr(appEmtrState_t value)
 {
@@ -446,7 +470,7 @@ static esp_err_t enterApi(drvCtrl_t ** pCtrl)
 /**
  * \brief Read the device status
  */
-static esp_err_t readStatus(drvCtrl_t * pCtrl, appEmtrStatus_t * ret)
+static esp_err_t readStatus(drvCtrl_t* pCtrl, appEmtrStatus_t* ret)
 {
 	esp_err_t	status;
 	uint8_t		resp[5];	// Expect 5 bytes returned
@@ -475,7 +499,7 @@ static esp_err_t readStatus(drvCtrl_t * pCtrl, appEmtrStatus_t * ret)
 	//         0   Reserved
 	//    4  Temperature (degrees C)
 
-	static appEmtrState_t	emtrState;
+	appEmtrState_t	emtrState;
 
 	// Decode pump state code
 	switch (resp[2])
@@ -493,12 +517,10 @@ static esp_err_t readStatus(drvCtrl_t * pCtrl, appEmtrStatus_t * ret)
 		break;
 	}
 
+	ret->relayState.value = emtrState;
+	ret->relayState.str = appEmtrDrvStateStr(emtrState);
+
 	/* ToDo
-	ret->pumpState.value = pumpemtrStateState;
-
-	// Get pump state string
-	ret->pumpState.str = wwPumpDrvStateStr(ret->pumpState.value);
-
 	// Unpack the flags byte
 	uint8_t	flags = resp[3];
 
@@ -687,16 +709,16 @@ static void checkEmtr(drvCtrl_t * pCtrl)
 		notify(pCtrl, appEmtrEvtCode_temperature, &evtData);
 	}
 
-	if (pre->pumpState.value != cur->pumpState.value) {
-		pre->pumpState.value = cur->pumpState.value;
+	if (pre->relayState.value != cur->relayState.value) {
+		pre->relayState.value = cur->relayState.value;
 
-		evtData.state.value = cur->pumpState.value;
-		evtData.state.str   = cur->pumpState.str;
+		evtData.state.value = cur->relayState.value;
+		evtData.state.str   = cur->relayState.str;
 
-		// For pump-off, include totals with the event data
-		if (appEmtrState_off == cur->pumpState.value) {
+		// On off-cycle, include totals with the event data
+		if (appEmtrState_off == cur->relayState.value) {
 			MUTEX_GET(pCtrl);
-//			readTotals(pCtrl, &evtData.zzzzz);	// ToDo
+			readTotals(pCtrl, &evtData.state.totals);	// ToDo
 			MUTEX_PUT(pCtrl);
 		}
 
@@ -721,16 +743,16 @@ static void checkEmtr(drvCtrl_t * pCtrl)
 		// Copy current status to the control structure
 		*cur = inst;
 
-		appEmtrEvtData_t		evtData;
-
 		// Check for changes and notify registered clients
 		if (pre->dVolts != cur->dVolts) {
 			pre->dVolts = cur->dVolts;
 
-			/** ToDo
-			evtData.dVolts.value = cur->dVolts;
-			notify(pCtrl, wwPumpEvtCode_dVolts, &evtData);
-			**/
+			appEmtrEvtData_t	evtData = {
+				.dVolts = {
+					.value = cur->dVolts
+				}
+			};
+			notify(pCtrl, appEmtrEvtCode_dVolts, &evtData);
 		}
 	}
 }

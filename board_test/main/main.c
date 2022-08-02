@@ -29,7 +29,7 @@
 #include "cmd_serial.h"
 #include "cmd_ble.h"
 
-const char	testFwVersion[] = {"1.0.0"};
+const char	testFwVersion[] = {"0.1.0"};
 
 static void initialize_console()
 {
