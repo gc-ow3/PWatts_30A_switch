@@ -1,0 +1,18 @@
+set PROJ=board_test
+set BIN_ROOT=.\build
+set MFG_ROOT=..\..\mfg_data
+
+set DIR_TOOLS=%cd%\win\tools
+
+set COMPORT=5
+set TTYPORT=COM%COMPORT%
+
+set ADDR_BOOT=0x001000
+set ADDR_PART=0x00e000
+set ADDR_KEYS=0x00f000
+set ADDR_MFG=0x010000
+set SIZE_MFG=0x004000
+set ADDR_OTA=0x0fe000
+set SIZE_OTA=0x002000
+set ADDR_APP=0x100000
+set SIZE_APP=0x200000
