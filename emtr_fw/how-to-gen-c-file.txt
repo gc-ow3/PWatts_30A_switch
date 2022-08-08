@@ -1,0 +1,17 @@
+To generate a C data file of the EMTR binary
+(NOTE: ensure this is a binary with our header prepended)
+
+1. cd to the folder holding the EMTR binary
+
+2. run xxd command:
+xxd -i -a -c 16 emtr-hdr-x.y.z.bin emtr_fw.c
+
+3. Edit emtr_fw.c
+   a. Insert a comment line at the top of the file showing the version e.g.
+      // EMTR 0.7.1
+   b. Change the first line to:
+      const unsigned char emtrFwBin[] = {
+   c. Change the last line to:
+      const unsigned int emtrFwBinLen = sizeof(emtrFwBin);
+
+Copy the file to <path>/app_driver, overwriting the existing file
