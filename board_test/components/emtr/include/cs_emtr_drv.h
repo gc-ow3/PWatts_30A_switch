@@ -334,6 +334,7 @@ typedef struct {
 		uint64_t	hcci       : 1;
 		uint64_t	calData    : 1;
 	} features;
+	char						appTag;			//!< First character in version string
 	uint16_t					resetDelayMs;	//!< Number of milliseconds to delay after driving reset
 	uint8_t						numSockets;		//!< Number of sockets defined by the array
 	csEmtrSockInfo_t *			sockInfo;		//!< Pointer to an array of socket information structures

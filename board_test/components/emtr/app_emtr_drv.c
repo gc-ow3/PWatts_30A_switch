@@ -107,6 +107,8 @@ static esp_err_t readTotals(drvCtrl_t * pCtrl, appEmtrTotals_t * ret);
 
 static esp_err_t readInstValues(drvCtrl_t * pCtrl, appEmtrInstant_t * ret);
 
+static void drvTask(void* arg);
+
 ////////////////////////////////////////////////////////////////////////////////
 // Constant data
 ////////////////////////////////////////////////////////////////////////////////
@@ -119,6 +121,7 @@ extern const unsigned char	emtrFwBin[];
  *
  */
 static const csEmtrDrvConf_t	emtrDrvConfInit = {
+	.appTag             = 'P',	// 'P' for Powder Watts?
 	.numSockets         = 0,
 	.sockInfo			= NULL,
 	.numAccChan			= 0,	// In addition to the one built into the driver
@@ -265,6 +268,22 @@ esp_err_t appEmtrDrvStart()
 	} else {
 		ESP_LOGI(TAG, "EMTR driver failed to start, error = %d", status);
 		return status;
+	}
+
+	BaseType_t	xStatus;
+
+	// Start the control task
+	xStatus = xTaskCreate(
+		drvTask,
+		"app_emtr_drv",
+		3000,
+		(void *)pCtrl,
+		5,
+		NULL
+	);
+	if (pdPASS != xStatus) {
+		ESP_LOGE(TAG, "Task create failed");
+		return ESP_FAIL;
 	}
 
 	// The driver is running
@@ -671,7 +690,7 @@ static esp_err_t emtrCbDeviceStatus(
 }
 
 
-static void checkEmtr(drvCtrl_t * pCtrl)
+static void checkEmtr(drvCtrl_t* pCtrl)
 {
 	esp_err_t	status;
 
@@ -692,10 +711,10 @@ static void checkEmtr(drvCtrl_t * pCtrl)
 	}
 
 	// Shorthand references to status structures
-	appEmtrStatus_t *	cur = &pCtrl->curDeviceStatus;
-	appEmtrStatus_t *	pre = &pCtrl->preDeviceStatus;
+	appEmtrStatus_t*	cur = &pCtrl->curDeviceStatus;
+	appEmtrStatus_t*	pre = &pCtrl->preDeviceStatus;
 
-	appEmtrEvtData_t		evtData;
+	appEmtrEvtData_t	evtData;
 
 	// Copy current status to the control structure
 	*cur = curStatus;
@@ -737,8 +756,8 @@ static void checkEmtr(drvCtrl_t * pCtrl)
 	appEmtrInstant_t	inst;
 	if (readInstValues(pCtrl, &inst) == ESP_OK) {
 		// Shorthand references to status structures
-		appEmtrInstant_t *	cur = &pCtrl->curInstEnergy;
-		appEmtrInstant_t *	pre = &pCtrl->preInstEnergy;
+		appEmtrInstant_t*	cur = &pCtrl->curInstEnergy;
+		appEmtrInstant_t*	pre = &pCtrl->preInstEnergy;
 
 		// Copy current status to the control structure
 		*cur = inst;
@@ -754,5 +773,18 @@ static void checkEmtr(drvCtrl_t * pCtrl)
 			};
 			notify(pCtrl, appEmtrEvtCode_dVolts, &evtData);
 		}
+	}
+}
+
+
+static void drvTask(void* arg)
+{
+	drvCtrl_t*	pCtrl = (drvCtrl_t*)arg;
+
+	while (1)
+	{
+		// Update EMTR status 5x per second
+		CS_SLEEP_MS(200);
+		checkEmtr(pCtrl);
 	}
 }

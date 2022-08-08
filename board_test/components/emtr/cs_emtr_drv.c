@@ -1645,13 +1645,13 @@ static esp_err_t emtrRunModeGet(
 
 	// Unpack response
 	// Offset  Length  Content
-	//      0       1  Run mode: 'W' == EMTR application, 'B' == boot loader
+	//      0       1  Run mode: 'B' == boot loader, appTag == application
 	//      1       1  Major version
 	//      2       1  Minor version
 	//      3       1  Patch version
 
 	// Return the mode
-	if (resp[0] == 'W') {
+	if (resp[0] == pCtrl->conf.appTag) {
 		*mode = emtrRunMode_application;
 	} else if (resp[0] == 'B') {
 		*mode = emtrRunMode_bootLoader;
