@@ -11,5 +11,5 @@ set(include_dirs "include")
 idf_component_register(
     SRCS "${srcs}"
     INCLUDE_DIRS "${include_dirs}"
-    REQUIRES cs_common cs_drivers cs_utils json
+    REQUIRES cs_common cs_drivers cs_utils json xmodem
 )

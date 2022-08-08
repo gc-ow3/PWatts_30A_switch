@@ -5,14 +5,15 @@
  *      Author: wesd
  */
 
+#include "sdkconfig.h"
 #include <esp_err.h>
+#include <esp_log.h>
 #include <driver/gpio.h>
 #include <driver/uart.h>
-#include <esp_log.h>
 #include "cs_common.h"
 #include "cs_emtr_drv.h"
-//#include "xmodem.h"
-//#include "fw_file_check.h"
+#include "xmodem.h"
+#include "fw_file_check.h"
 
 static const char TAG[] = {"cs_emtr_drv"};
 
@@ -255,9 +256,7 @@ static void resetEmtrAccumulators(accEnergy_t * eAccum);
 
 static void ctrlTask(void * params);
 
-#if 0
 static esp_err_t emtrUpgrade(emtrCtrl_t * pCtrl, const uint8_t * fwFile);
-#endif
 
 static void timerCallback(TimerHandle_t timerHandle);
 
@@ -416,7 +415,6 @@ esp_err_t csEmtrDrvInit(const csEmtrDrvConf_t * conf)
 		ESP_LOGE(TAG, "Failed to start EMTR application");
 	}
 
-#if 0
 	// Check if there is a firmware update for the EMTR
 	const uint8_t *	fwImg = pCtrl->conf.fwImage;
 
@@ -436,7 +434,6 @@ esp_err_t csEmtrDrvInit(const csEmtrDrvConf_t * conf)
 			}
 		}
 	}
-#endif
 
 	pCtrl->isGood = true;
 	emtrCtrl = pCtrl;
@@ -1645,13 +1642,13 @@ static esp_err_t emtrRunModeGet(
 
 	// Unpack response
 	// Offset  Length  Content
-	//      0       1  Run mode: 'W' == EMTR application, 'B' == boot loader
+	//      0       1  Run mode: 'B' == boot loader, appTag == application,
 	//      1       1  Major version
 	//      2       1  Minor version
 	//      3       1  Patch version
 
 	// Return the mode
-	if (resp[0] == 'W') {
+	if (resp[0] == pCtrl->conf.appTag) {
 		*mode = emtrRunMode_application;
 	} else if (resp[0] == 'B') {
 		*mode = emtrRunMode_bootLoader;
@@ -2008,7 +2005,6 @@ static void ctrlTask(void * params)
 }
 
 
-#if 0
 static esp_err_t startXmodemTransfer(emtrCtrl_t * pCtrl)
 {
 	uint8_t		cmd = pCtrl->conf.cmd.xmodemStart;
@@ -2118,7 +2114,6 @@ exitUpdate:
 	xTimerReset(pCtrl->timer, pdMS_TO_TICKS(20));
 	return status;
 }
-#endif
 
 
 static void timerCallback(TimerHandle_t timer)

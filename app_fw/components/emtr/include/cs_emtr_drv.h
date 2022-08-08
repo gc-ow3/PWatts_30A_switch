@@ -328,6 +328,7 @@ typedef esp_err_t (* csEmtrDrvCbSetHcci_t)(
  * The array pointed to by info must have an entry for each socket
  */
 typedef struct {
+	char			appTag;
 	struct {
 		uint64_t	plugDetect : 1;
 		uint64_t	loadDetect : 1;

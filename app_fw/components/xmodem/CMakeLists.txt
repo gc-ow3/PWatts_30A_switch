@@ -1,7 +1,6 @@
 set(srcs
-  "bin_hex.c"
-  "cs_packer.c"
-  "fw_file_check.c"
+  "xmodem_crc.c"
+  "xmodem_snd.c"
 )
 
 set(include_dirs "include")

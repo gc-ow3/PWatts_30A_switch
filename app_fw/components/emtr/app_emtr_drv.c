@@ -16,7 +16,7 @@
 #include "cs_packer.h"
 #include "app_emtr_drv.h"
 
-static const char TAG[] = {"app_emtr_drv"};
+static const char TAG[] = {"app_emtr"};
 
 ////////////////////////////////////////////////////////////////////////////////
 // Convenience macros
@@ -110,6 +110,7 @@ extern const unsigned char	emtrFwBin[];
  *
  */
 static const csEmtrDrvConf_t	emtrDrvConfInit = {
+	.appTag             = 'P',
 	.numSockets         = 0,
 	.sockInfo			= NULL,
 	.numAccChan			= 0,	// In addition to the one built into the driver
@@ -253,7 +254,6 @@ esp_err_t appEmtrDrvStart()
 		return status;
 	}
 
-	// Start the power signature read task
 	BaseType_t	xStatus;
 	xStatus = xTaskCreate(
 		emtrTask,
@@ -400,6 +400,7 @@ cJSON * appEmtrDrvAlarmListJson(appEmtrAlarm_t alarm)
 	const char *	sList[8];
 	int				sCount = 0;
 
+#if 0
 	if (alarm.item.acLine) {
 		sList[sCount++] = "acLine";
 	}
@@ -412,6 +413,7 @@ cJSON * appEmtrDrvAlarmListJson(appEmtrAlarm_t alarm)
 	if (alarm.item.underload) {
 		sList[sCount++] = "underload";
 	}
+#endif
 
 	return cJSON_CreateStringArray(sList, sCount);
 }
@@ -449,10 +451,10 @@ static esp_err_t enterApi(drvCtrl_t ** pCtrl)
 /**
  * \brief Read the device status
  */
-static esp_err_t readStatus(drvCtrl_t * pCtrl, appEmtrStatus_t * ret)
+static esp_err_t readStatus(drvCtrl_t* pCtrl, appEmtrStatus_t* ret)
 {
 	esp_err_t	status;
-	uint8_t		resp[5];	// Expect 5 bytes returned
+	uint8_t		resp[3];	// Expect 3 bytes returned
 	int			ioLen = sizeof(resp);
 
 	status = csEmtrDrvCommand(CMD_GET_STATUS, NULL, resp, &ioLen);
@@ -463,64 +465,55 @@ static esp_err_t readStatus(drvCtrl_t * pCtrl, appEmtrStatus_t * ret)
 
 	// Unpack response
 	// Byte  Content
-	//    0  Water level 0..5
-	//    1  unused
-	//    2  Pump state
-	//    3  Alarm bit mask
+	//    0  Relay state
+	//    1  Alarm bit mask
 	//       Bit   Function
 	//         7   Reserved
 	//         6   Reserved
-	//         5   AC Line
+	//         5   Reserved
 	//         4   Reserved
-	//         3   High temperature
-	//         2   Overload
-	//         1   Underload
+	//         3   Reserved
+	//         2   Reserved
+	//         1   Reserved
 	//         0   Reserved
-	//    4  Temperature (degrees C)
+	//    3  Temperature (degrees C)
 
-	static appEmtrState_t	emtrState;
-
-	// Decode pump state code
+	// Decode relay state
 	switch (resp[2])
 	{
 	case 0x00:
-		emtrState = appEmtrState_off;
+		ret->relayState.value = appEmtrState_off;
+		ret->relayState.str = "Off";
 		break;
 	case 0x01:
-		emtrState = appEmtrState_on;
+		ret->relayState.value = appEmtrState_on;
+		ret->relayState.str = "On";
 		break;
 	default:
 		ESP_LOGE(TAG, "EMTR returns state %d", resp[2]);
 		// Default to off
-		emtrState = appEmtrState_off;
+		ret->relayState.value = appEmtrState_off;
+		ret->relayState.str = "Off";
 		break;
 	}
 
-	/* ToDo
-	ret->pumpState.value = pumpemtrStateState;
-
-	// Get pump state string
-	ret->pumpState.str = wwPumpDrvStateStr(ret->pumpState.value);
-
 	// Unpack the flags byte
-	uint8_t	flags = resp[3];
+	uint8_t	flags = resp[1];
 
 	// Map the alarm bit mask to the flags structure
-	wwPumpAlarm_t *	rFlag = &ret->alarm.flags;
+	appEmtrAlarm_t *	rFlag = &ret->alarm.flags;
 
-	rFlag->item.resvd_1    = (flags >> 7) & 1;
-	rFlag->item.resvd_2    = (flags >> 6) & 1;
-	rFlag->item.acLine     = (flags >> 5) & 1;
-	rFlag->item.resvd_3    = (flags >> 4) & 1;
-	rFlag->item.highTemp   = (flags >> 3) & 1;
-	rFlag->item.overload   = (flags >> 2) & 1;
-	rFlag->item.underload  = (flags >> 1) & 1;
-	rFlag->item.waterLevel = (flags >> 0) & 1;
+	rFlag->item.resvd_7  = (flags >> 7) & 1;
+	rFlag->item.resvd_6  = (flags >> 6) & 1;
+	rFlag->item.resvd_5  = (flags >> 5) & 1;
+	rFlag->item.resvd_4  = (flags >> 4) & 1;
+	rFlag->item.resvd_3  = (flags >> 3) & 1;
+	rFlag->item.resvd_2  = (flags >> 2) & 1;
+	rFlag->item.resvd_1  = (flags >> 1) & 1;
+	rFlag->item.resvd_0  = (flags >> 0) & 1;
 
 	// Unpack the temperature
-	ret->tempC = resp[4];
-
-	*/
+	ret->tempC = resp[2];
 
 	// Enable this block to print changes in flag bits
 #if 0
@@ -561,8 +554,7 @@ static esp_err_t readStatus(drvCtrl_t * pCtrl, appEmtrStatus_t * ret)
 
 static esp_err_t readTotals(drvCtrl_t * pCtrl, appEmtrTotals_t * ret)
 {
-	/*** ToDo
-	uint8_t		resp[24];	// Expect 24 bytes returned
+	uint8_t		resp[16];	// Expect 16 bytes returned
 	int			ioLen;
 	esp_err_t	status;
 
@@ -576,20 +568,15 @@ static esp_err_t readTotals(drvCtrl_t * pCtrl, appEmtrTotals_t * ret)
 	// Offset  Len  Content
 	//      0    4  Epoch
 	//      4    4  On Duration
-	//      8    4  Pump Cycles
-	//     12    4  Relay Cycles
-	//     16    4  Test Cycles
-	//     20    4  Energy
+	//      8    4  Relay Cycles
+	//     12    4  Watt-Hours
 	csPacker_t	unpack;
 
 	csPackInit(&unpack, resp, sizeof(resp));
 	csUnpackBEU32(&unpack, &ret->epoch);
 	csUnpackBEU32(&unpack, &ret->onDuration);
-	csUnpackBEU32(&unpack, &ret->pumpCycles);
 	csUnpackBEU32(&unpack, &ret->relayCycles);
-	csUnpackBEU32(&unpack, &ret->testCycles);
 	csUnpackBEU32(&unpack, &ret->dWattH);
-	***/
 
 	return ESP_OK;
 }
@@ -597,7 +584,6 @@ static esp_err_t readTotals(drvCtrl_t * pCtrl, appEmtrTotals_t * ret)
 
 static esp_err_t readInstValues(drvCtrl_t * pCtrl, appEmtrInstant_t * ret)
 {
-	/*** ToDo
 	uint8_t		resp[16];	// Expect 16 bytes returned
 	int			ioLen;
 	esp_err_t	status;
@@ -615,7 +601,7 @@ static esp_err_t readInstValues(drvCtrl_t * pCtrl, appEmtrInstant_t * ret)
 	//      4    2  dWatts
 	//      6    2  pFactor
 	//      8    4  seconds power has been on
-	//     12    4  seconds triacs have been on
+	//     12    4  seconds relay has been on
 	csPacker_t	unpack;
 
 	csPackInit(&unpack, resp, sizeof(resp));
@@ -623,9 +609,8 @@ static esp_err_t readInstValues(drvCtrl_t * pCtrl, appEmtrInstant_t * ret)
 	csUnpackBEU16(&unpack, &ret->mAmps);
 	csUnpackBEU16(&unpack, &ret->dWatts);
 	csUnpackBEU16(&unpack, &ret->pFactor);
-	csUnpackBEU32(&unpack, &ret->powerOnSecs);
-	csUnpackBEU32(&unpack, &ret->pumpOnSecs);
-	***/
+	csUnpackBEU32(&unpack, &ret->uptime);
+	csUnpackBEU32(&unpack, &ret->relayOnSecs);
 
 	return ESP_OK;
 }
@@ -673,10 +658,10 @@ static void checkEmtr(drvCtrl_t* pCtrl)
 	}
 
 	// Shorthand references to status structures
-	appEmtrStatus_t *	cur = &pCtrl->curDeviceStatus;
-	appEmtrStatus_t *	pre = &pCtrl->preDeviceStatus;
+	appEmtrStatus_t*	cur = &pCtrl->curDeviceStatus;
+	appEmtrStatus_t*	pre = &pCtrl->preDeviceStatus;
 
-	appEmtrEvtData_t		evtData;
+	appEmtrEvtData_t	evtData;
 
 	// Copy current status to the control structure
 	*cur = curStatus;
@@ -690,17 +675,16 @@ static void checkEmtr(drvCtrl_t* pCtrl)
 		notify(pCtrl, appEmtrEvtCode_temperature, &evtData);
 	}
 
-	if (pre->pumpState.value != cur->pumpState.value) {
-		pre->pumpState.value = cur->pumpState.value;
+	if (pre->relayState.value != cur->relayState.value) {
+		pre->relayState.value = cur->relayState.value;
 
-		evtData.state.value = cur->pumpState.value;
-		evtData.state.str   = cur->pumpState.str;
+		evtData.state.value = cur->relayState.value;
+		evtData.state.str   = cur->relayState.str;
 
 		// For off, include totals with the event data
-		if (appEmtrState_off == cur->pumpState.value) {
+		if (appEmtrState_off == cur->relayState.value) {
 			MUTEX_GET(pCtrl);
-			// ToDo
-//			readTotals(pCtrl, &evtData.zzzzz);	// ToDo
+			readTotals(pCtrl, &evtData.state.totals);
 			MUTEX_PUT(pCtrl);
 		}
 
@@ -710,31 +694,27 @@ static void checkEmtr(drvCtrl_t* pCtrl)
 	if (pre->alarm.flags.mask != cur->alarm.flags.mask) {
 		pre->alarm.flags = cur->alarm.flags;
 
-		/* ToDo
-		evtData.alarmFlags.value  = cur->alarm.flags;
-		notify(pCtrl, appEmtrEvtCode_alarmFlags, &evtData);
-		*/
+		evtData.alarms.flags  = cur->alarm.flags;
+		notify(pCtrl, appEmtrEvtCode_alarms, &evtData);
 	}
 
 	appEmtrInstant_t	inst;
 	if (readInstValues(pCtrl, &inst) == ESP_OK) {
 		// Shorthand references to status structures
-		appEmtrInstant_t *	cur = &pCtrl->curInstEnergy;
-		appEmtrInstant_t *	pre = &pCtrl->preInstEnergy;
+		appEmtrInstant_t*	cur = &pCtrl->curInstEnergy;
+		appEmtrInstant_t*	pre = &pCtrl->preInstEnergy;
 
 		// Copy current status to the control structure
 		*cur = inst;
 
-		appEmtrEvtData_t		evtData;
+		appEmtrEvtData_t	evtData;
 
 		// Check for changes and notify registered clients
 		if (pre->dVolts != cur->dVolts) {
 			pre->dVolts = cur->dVolts;
 
-			/** ToDo
 			evtData.dVolts.value = cur->dVolts;
-			notify(pCtrl, wwPumpEvtCode_dVolts, &evtData);
-			**/
+			notify(pCtrl, appEmtrEvtCode_dVolts, &evtData);
 		}
 	}
 }

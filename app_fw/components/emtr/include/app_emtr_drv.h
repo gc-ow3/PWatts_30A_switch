@@ -22,11 +22,11 @@ typedef union {
 	struct {
 		uint8_t	resvd_0    : 1;
 		uint8_t	resvd_1    : 1;
-		uint8_t	acLine     : 1;
+		uint8_t	resvd_2    : 1;
 		uint8_t	resvd_3    : 1;
-		uint8_t	highTemp   : 1;
-		uint8_t	overload   : 1;
-		uint8_t	underload  : 1;
+		uint8_t	resvd_4    : 1;
+		uint8_t	resvd_5    : 1;
+		uint8_t	resvd_6    : 1;
 		uint8_t	resvd_7    : 1;
 	} item;
 } appEmtrAlarm_t;
@@ -43,14 +43,14 @@ typedef enum {
  *
  */
 typedef struct {
-	uint8_t				tempC;
 	struct {
 		appEmtrState_t	value;
 		const char *	str;
-	}					pumpState;
+	}	relayState;
 	struct {
 		appEmtrAlarm_t	flags;
-	}					alarm;
+	} alarm;
+	uint8_t	tempC;
 } appEmtrStatus_t;
 
 
@@ -73,6 +73,7 @@ typedef struct {
 	uint16_t	mAmps;
 	uint16_t	dWatts;
 	uint16_t	pFactor;
+	uint32_t	uptime;
 	uint32_t	relayOnSecs;
 } appEmtrInstant_t;
 
@@ -81,6 +82,7 @@ typedef enum {
 	appEmtrEvtCode_state,
 	appEmtrEvtCode_temperature,
 	appEmtrEvtCode_dVolts,
+	appEmtrEvtCode_alarms
 } appEmtrEvtCode_t;
 
 typedef union {
@@ -93,8 +95,11 @@ typedef union {
 		uint8_t		value;
 	} temperature;
 	struct {
-		uint16_t			value;
+		uint16_t	value;
 	} dVolts;
+	struct {
+		appEmtrAlarm_t	flags;
+	} alarms;
 } appEmtrEvtData_t;
 
 
