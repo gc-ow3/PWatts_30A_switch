@@ -42,18 +42,21 @@ static const char TAG[] = {"app_emtr"};
 #define CMD_GET_TOTALS		(0x02)
 #define CMD_GET_INST_VALUES	(0x03)
 
+// Set relay state
+#define CMD_SET_RELAY		(0x05)
+
 // Test commands
-#define CMD_SELF_TEST_START	(0x11)
-#define CMD_SET_TEST_MODE	(0x12)
+//#define CMD_SELF_TEST_START	(0x11)
+//#define CMD_SET_TEST_MODE	(0x12)
 
 // Calibration
-#define CMD_CAL_GET				(0x0D)
-#define CMD_CAL_SET				(0x0E)
-#define CMD_SET_U_GAIN			(0x1A)
-#define CMD_SET_I_GAIN			(0x1B)
-#define CMD_READ_I_LEAK			(0x40)
-#define CMD_SET_0P1_MA_LEAK		(0x41)
-#define CMD_SET_1P0_MA_LEAK		(0x42)
+//#define CMD_CAL_GET				(0x0D)
+//#define CMD_CAL_SET				(0x0E)
+//#define CMD_SET_U_GAIN			(0x1A)
+//#define CMD_SET_I_GAIN			(0x1B)
+//#define CMD_READ_I_LEAK			(0x40)
+//#define CMD_SET_0P1_MA_LEAK		(0x41)
+//#define CMD_SET_1P0_MA_LEAK		(0x42)
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -95,6 +98,8 @@ static esp_err_t readStatus(drvCtrl_t * pCtrl, appEmtrStatus_t * ret);
 static esp_err_t readTotals(drvCtrl_t * pCtrl, appEmtrTotals_t * ret);
 
 static esp_err_t readInstValues(drvCtrl_t * pCtrl, appEmtrInstant_t * ret);
+
+static esp_err_t setRelay(drvCtrl_t * pCtrl, bool on);
 
 static void emtrTask(void* arg);
 
@@ -163,8 +168,6 @@ static const csEmtrDrvConf_t	emtrDrvConfInit = {
 
 // Task control structure
 static drvCtrl_t *	drvCtrl;
-
-//#include "fw_file_check.h"
 
 /**
  * \brief Initialize, but not start the EMTR driver
@@ -307,7 +310,7 @@ esp_err_t appEmtrDrvGetStatus(appEmtrStatus_t * ret)
   * \param [out] ret Pointer to structure to receive the data
   *
  */
-esp_err_t appEmtrDrvGetInstValues(appEmtrInstant_t * ret)
+esp_err_t appEmtrDrvGetInstant(appEmtrInstant_t * ret)
 {
 	if (NULL == ret) {
 		return ESP_ERR_INVALID_ARG;
@@ -355,6 +358,24 @@ esp_err_t appEmtrDrvGetTotals(appEmtrTotals_t * ret)
 }
 
 
+esp_err_t appEmtrDrvSetRelay(bool on)
+{
+	drvCtrl_t *	pCtrl;
+	esp_err_t	status;
+
+	if ((status = enterApi(&pCtrl)) != ESP_OK) {
+		return status;
+	}
+
+	MUTEX_GET(pCtrl);
+	status = setRelay(pCtrl, on);
+	MUTEX_PUT(pCtrl);
+
+	return status;
+}
+
+
+#if 0
 esp_err_t pwEmtrDrvFactoryTest(appEmtrTestId_t testId, uint8_t duration)
 {
 	if (0 == duration) {
@@ -376,6 +397,7 @@ esp_err_t pwEmtrDrvFactoryTest(appEmtrTestId_t testId, uint8_t duration)
 
 	return csEmtrDrvCommand(CMD_SET_TEST_MODE, payload, resp, &ioLen);
 }
+#endif
 
 
 const char * appEmtrDrvStateStr(appEmtrState_t value)
@@ -479,38 +501,28 @@ static esp_err_t readStatus(drvCtrl_t* pCtrl, appEmtrStatus_t* ret)
 	//    3  Temperature (degrees C)
 
 	// Decode relay state
-	switch (resp[2])
-	{
-	case 0x00:
-		ret->relayState.value = appEmtrState_off;
-		ret->relayState.str = "Off";
-		break;
-	case 0x01:
+	if (resp[0] & 0x01) {
 		ret->relayState.value = appEmtrState_on;
-		ret->relayState.str = "On";
-		break;
-	default:
-		ESP_LOGE(TAG, "EMTR returns state %d", resp[2]);
-		// Default to off
+	} else {
 		ret->relayState.value = appEmtrState_off;
-		ret->relayState.str = "Off";
-		break;
 	}
 
+	ret->relayState.str = appEmtrDrvStateStr(ret->relayState.value);
+
 	// Unpack the flags byte
-	uint8_t	flags = resp[1];
+	uint8_t	alarms = resp[1];
 
 	// Map the alarm bit mask to the flags structure
-	appEmtrAlarm_t *	rFlag = &ret->alarm.flags;
+	appEmtrAlarm_t*	rFlag = &ret->alarm.flags;
 
-	rFlag->item.resvd_7  = (flags >> 7) & 1;
-	rFlag->item.resvd_6  = (flags >> 6) & 1;
-	rFlag->item.resvd_5  = (flags >> 5) & 1;
-	rFlag->item.resvd_4  = (flags >> 4) & 1;
-	rFlag->item.resvd_3  = (flags >> 3) & 1;
-	rFlag->item.resvd_2  = (flags >> 2) & 1;
-	rFlag->item.resvd_1  = (flags >> 1) & 1;
-	rFlag->item.resvd_0  = (flags >> 0) & 1;
+	rFlag->item.resvd_7  = (alarms >> 7) & 1;
+	rFlag->item.resvd_6  = (alarms >> 6) & 1;
+	rFlag->item.resvd_5  = (alarms >> 5) & 1;
+	rFlag->item.resvd_4  = (alarms >> 4) & 1;
+	rFlag->item.resvd_3  = (alarms >> 3) & 1;
+	rFlag->item.resvd_2  = (alarms >> 2) & 1;
+	rFlag->item.resvd_1  = (alarms >> 1) & 1;
+	rFlag->item.resvd_0  = (alarms >> 0) & 1;
 
 	// Unpack the temperature
 	ret->tempC = resp[2];
@@ -525,14 +537,22 @@ static esp_err_t readStatus(drvCtrl_t* pCtrl, appEmtrStatus_t* ret)
 		const char *	flagList[8];
 		int				flagCt = 0;
 
-		if (rFlag->item.acLine)
-			flagList[flagCt++] = "acLine";
-		if (rFlag->item.highTemp)
-			flagList[flagCt++] = "temp";
-		if (rFlag->item.overload)
-			flagList[flagCt++] = "overLd";
-		if (rFlag->item.underload)
-			flagList[flagCt++] = "underLd";
+		if (rFlag->item.resvd_7)
+			flagList[flagCt++] = "rsvd-7";
+		if (rFlag->item.resvd_6)
+			flagList[flagCt++] = "rsvd-6";
+		if (rFlag->item.resvd_5)
+			flagList[flagCt++] = "rsvd-5";
+		if (rFlag->item.resvd_4)
+			flagList[flagCt++] = "rsvd-4";
+		if (rFlag->item.resvd_3)
+			flagList[flagCt++] = "rsvd-3";
+		if (rFlag->item.resvd_2)
+			flagList[flagCt++] = "rsvd-2";
+		if (rFlag->item.resvd_1)
+			flagList[flagCt++] = "rsvd-1";
+		if (rFlag->item.resvd_0)
+			flagList[flagCt++] = "rsvd-0";
 
 		char	flagStr[60] = {'\0'};
 		int		i;
@@ -613,6 +633,19 @@ static esp_err_t readInstValues(drvCtrl_t * pCtrl, appEmtrInstant_t * ret)
 	csUnpackBEU32(&unpack, &ret->relayOnSecs);
 
 	return ESP_OK;
+}
+
+
+static esp_err_t setRelay(drvCtrl_t * pCtrl, bool on)
+{
+	uint8_t		payload[4] = {0, 0, 0, 0};
+
+	payload[0] = on ? 1 : 0;
+	payload[1] = 0;
+	payload[2] = 0;
+	payload[3] = 0;
+
+	return csEmtrDrvCommand(CMD_SET_RELAY, payload, NULL, NULL);
 }
 
 

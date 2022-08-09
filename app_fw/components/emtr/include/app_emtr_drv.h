@@ -102,27 +102,22 @@ typedef union {
 	} alarms;
 } appEmtrEvtData_t;
 
+typedef void (*appEmtrDrvEventCb_t)(appEmtrEvtCode_t evtCode, appEmtrEvtData_t* evtData, void* cbData);
+
 
 esp_err_t appEmtrDrvInit(void);
 
 esp_err_t appEmtrDrvStart(void);
 
-esp_err_t appEmtrDrvGetInstValues(appEmtrInstant_t * ret);
+esp_err_t appEmtrDrvGetStatus(appEmtrStatus_t * ret);
 
 esp_err_t appEmtrDrvGetTotals(appEmtrTotals_t * ret);
 
-esp_err_t appEmtrDrvGetSignature(uint8_t * buf, int * ioLen);
+esp_err_t appEmtrDrvGetInstant(appEmtrInstant_t * ret);
 
 const char * appEmtrDrvStateStr(appEmtrState_t value);
 
-// The values here correspond to EMTR command codes
-// Do not change them
-typedef enum {
-	appEmtrTestId_lineRelayOn     = 0x03,
-	appEmtrTestId_term            = 0xff,
-} appEmtrTestId_t;
-
-esp_err_t appEmtrDrvFactoryTest(appEmtrTestId_t testId, uint8_t duration);
+esp_err_t appEmtrDrvSetRelay(bool on);
 
 #ifdef __cplusplus
 }

@@ -416,7 +416,9 @@ esp_err_t csEmtrDrvInit(const csEmtrDrvConf_t * conf)
 	}
 
 	// Check if there is a firmware update for the EMTR
-	const uint8_t *	fwImg = pCtrl->conf.fwImage;
+	const uint8_t*	fwImg = pCtrl->conf.fwImage;
+
+	csFwFilePrintHeader(fwImg);
 
 	if (csFwFileIsValid(fwImg, "emtr")) {
 		const csFwHdr_t *	fwHdr = (const csFwHdr_t *)fwImg;
