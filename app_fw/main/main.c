@@ -10,6 +10,7 @@
 #include "cs_common.h"
 #include "pinout.h"
 #include "led_drv.h"
+#include "inp_drv.h"
 #include "app_emtr_drv.h"
 #include "emtr_pwr_sig.h"
 
@@ -120,6 +121,9 @@ void app_main(void)
 		ledDrvSetMode(ledId_ble, ledMode_off);
 	}
 
+	ESP_ERROR_CHECK(inpDrvInit(NULL, NULL));
+	ESP_ERROR_CHECK(inpDrvStart());
+
 	// Do low-level core initialization to load manufacturing data and parameters first
 //	ESP_LOGD(TAG, "csCoreInit0");
 //	ESP_ERROR_CHECK(csCoreInit0((csCoreInit0_t *)&coreInit0));
@@ -135,6 +139,7 @@ void app_main(void)
 	// Start EMTR driver
 	// Flash LEDs in case firmware update is required during start
 	ESP_ERROR_CHECK(appEmtrDrvInit());
+
 	//ledMgrFlashLed(ledId_system, 250, 250, 0, 0);
 	ESP_ERROR_CHECK(appEmtrDrvStart());
 	//ledMgrTurnLedOff(ledId_system);
@@ -257,27 +262,91 @@ static esp_err_t modulesInit(void)
 {
 	ESP_LOGI(TAG, "Initialize modules");
 
+#if 0
 	pwrSigConf_t	pwrSigConf = {
 		.port = UART_NUM_2,
 		.rxGpio = UART2_RX_GPIO,
 		.baudRate = 921600,
 		.taskPriority = 4,
-		.cbFunc = NULL,		// ToDo
-		.cbData = NULL		// ToDo
+		.cbFunc = pwrSigCallback,
+		.cbData = NULL
 	};
 	ESP_ERROR_CHECK(pwrSigInit(&pwrSigConf));
-
-#if 0
-	esp_err_t	status;
-	if ((status = appControlInit()) != ESP_OK) {
-		ESP_LOGE(TAG, "appControlInit error %d", status);
-		return status;
-	}
 #endif
 
 	return ESP_OK;
 }
 
+void testTask(void* arg)
+{
+	esp_err_t	status;
+	inpState_t	inpState;
+	inpState_t	inpStatePrv = inpState_init;
+
+	while (1)
+	{
+		vTaskDelay(pdMS_TO_TICKS(2000));
+
+		if (inpDrvStateRead(inpId_switch1, &inpState) == ESP_OK) {
+			if (inpStatePrv != inpState) {
+				inpStatePrv = inpState;
+
+				if (inpState_active == inpState) {
+					printf("Turn on relay\r\n");
+					appEmtrDrvSetRelay(true);
+				} else {
+					printf("Turn off relay\r\n");
+					appEmtrDrvSetRelay(false);
+				}
+				printf("\r\n");
+			}
+		}
+
+		appEmtrStatus_t		eStatus;
+
+		status = appEmtrDrvGetStatus(&eStatus);
+		if (ESP_OK == status) {
+			printf("EMTR status\r\n");
+			printf("  Relay state    : %s\r\n", eStatus.relayState.str);
+			printf("  Alarms         : %02x\r\n", eStatus.alarm.flags.mask);
+			printf("  Temperature (C): %d\r\n", eStatus.tempC);
+			printf("\r\n");
+		} else {
+			ESP_LOGE(TAG, "Error %d reading EMTR status", status);
+		}
+
+		appEmtrTotals_t		eTotals;
+
+		status = appEmtrDrvGetTotals(&eTotals);
+		if (ESP_OK == status) {
+			printf("EMTR totals\r\n");
+			printf("  Epoch     : %u\r\n", eTotals.epoch);
+			printf("  Cycles    : %u\r\n", eTotals.relayCycles);
+			printf("  On        : %u seconds\r\n", eTotals.onDuration);
+			printf("  Watt-Hours: %1.1f\r\n", (float)eTotals.dWattH/10.0);
+			printf("\r\n");
+		} else {
+			ESP_LOGE(TAG, "Error %d reading EMTR totals", status);
+		}
+
+		appEmtrInstant_t	eInstant;
+
+		status = appEmtrDrvGetInstant(&eInstant);
+		if (ESP_OK == status) {
+			printf("EMTR instant\r\n");
+			printf("  Uptime      : %u\r\n", eInstant.uptime);
+			printf("  Volts       : %1.1f\r\n", (float)eInstant.dVolts/10.0);
+			printf("  Amps        : %1.3f\r\n", (float)eInstant.mAmps/1000.0);
+			printf("  Watts       : %1.1f\r\n", (float)eInstant.dWatts/10.0);
+			printf("  Power factor: %u\r\n", eInstant.pFactor);
+			printf("  Relay on    : %u seconds\r\n", eInstant.relayOnSecs);
+			printf("\r\n");
+		} else {
+			ESP_LOGE(TAG, "Error %d reading EMTR instant", status);
+		}
+
+	}
+}
 
 /**
  * \brief Start product-specific modules
@@ -286,9 +355,20 @@ static esp_err_t modulesStart(void)
 {
 	ESP_LOGI(TAG, "Start modules");
 
+#if 0
 	ESP_ERROR_CHECK(pwrSigStart());
+#endif
 
 	// ToDo ?
+
+	xTaskCreate(
+		testTask,
+		"test_emtr",
+		4000,
+		NULL,
+		5,
+		NULL
+	);
 
 	return ESP_OK;
 }
