@@ -307,7 +307,8 @@ void testTask(void* arg)
 		status = appEmtrDrvGetStatus(&eStatus);
 		if (ESP_OK == status) {
 			printf("EMTR status\r\n");
-			printf("  Relay state    : %s\r\n", eStatus.relayState.str);
+			printf("  Relay state    : %s\r\n", eStatus.relayStatus.str);
+			printf("  Output state   : %s\r\n", eStatus.outputStatus.str);
 			printf("  Alarms         : %02x\r\n", eStatus.alarm.flags.mask);
 			printf("  Temperature (C): %d\r\n", eStatus.tempC);
 			printf("\r\n");

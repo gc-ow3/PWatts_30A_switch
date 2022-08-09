@@ -46,7 +46,11 @@ typedef struct {
 	struct {
 		appEmtrState_t	value;
 		const char *	str;
-	}	relayState;
+	}	relayStatus;
+	struct {
+		appEmtrState_t	value;
+		const char *	str;
+	}	outputStatus;
 	struct {
 		appEmtrAlarm_t	flags;
 	} alarm;
@@ -79,7 +83,8 @@ typedef struct {
 
 typedef enum {
 	appEmtrEvtCode_null = 0,
-	appEmtrEvtCode_state,
+	appEmtrEvtCode_relayState,
+	appEmtrEvtCode_outputState,
 	appEmtrEvtCode_temperature,
 	appEmtrEvtCode_dVolts,
 	appEmtrEvtCode_alarms
@@ -89,7 +94,6 @@ typedef union {
 	struct {
 		appEmtrState_t	value;
 		const char *	str;
-		appEmtrTotals_t	totals;
 	} state;
 	struct {
 		uint8_t		value;

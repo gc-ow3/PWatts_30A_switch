@@ -476,7 +476,7 @@ static esp_err_t enterApi(drvCtrl_t ** pCtrl)
 static esp_err_t readStatus(drvCtrl_t* pCtrl, appEmtrStatus_t* ret)
 {
 	esp_err_t	status;
-	uint8_t		resp[3];	// Expect 3 bytes returned
+	uint8_t		resp[4];	// Expect 4 bytes returned
 	int			ioLen = sizeof(resp);
 
 	status = csEmtrDrvCommand(CMD_GET_STATUS, NULL, resp, &ioLen);
@@ -487,8 +487,9 @@ static esp_err_t readStatus(drvCtrl_t* pCtrl, appEmtrStatus_t* ret)
 
 	// Unpack response
 	// Byte  Content
-	//    0  Relay state
-	//    1  Alarm bit mask
+	//    0  Relay status
+	//    1  Output status
+	//    2  Alarm bit mask
 	//       Bit   Function
 	//         7   Reserved
 	//         6   Reserved
@@ -502,15 +503,22 @@ static esp_err_t readStatus(drvCtrl_t* pCtrl, appEmtrStatus_t* ret)
 
 	// Decode relay state
 	if (resp[0] & 0x01) {
-		ret->relayState.value = appEmtrState_on;
+		ret->relayStatus.value = appEmtrState_on;
 	} else {
-		ret->relayState.value = appEmtrState_off;
+		ret->relayStatus.value = appEmtrState_off;
 	}
+	ret->relayStatus.str = appEmtrDrvStateStr(ret->relayStatus.value);
 
-	ret->relayState.str = appEmtrDrvStateStr(ret->relayState.value);
+	// Decode output state
+	if (resp[1] & 0x01) {
+		ret->outputStatus.value = appEmtrState_on;
+	} else {
+		ret->outputStatus.value = appEmtrState_off;
+	}
+	ret->outputStatus.str = appEmtrDrvStateStr(ret->outputStatus.value);
 
 	// Unpack the flags byte
-	uint8_t	alarms = resp[1];
+	uint8_t	alarms = resp[2];
 
 	// Map the alarm bit mask to the flags structure
 	appEmtrAlarm_t*	rFlag = &ret->alarm.flags;
@@ -525,7 +533,7 @@ static esp_err_t readStatus(drvCtrl_t* pCtrl, appEmtrStatus_t* ret)
 	rFlag->item.resvd_0  = (alarms >> 0) & 1;
 
 	// Unpack the temperature
-	ret->tempC = resp[2];
+	ret->tempC = resp[3];
 
 	// Enable this block to print changes in flag bits
 #if 0
@@ -708,20 +716,30 @@ static void checkEmtr(drvCtrl_t* pCtrl)
 		notify(pCtrl, appEmtrEvtCode_temperature, &evtData);
 	}
 
-	if (pre->relayState.value != cur->relayState.value) {
-		pre->relayState.value = cur->relayState.value;
+	if (pre->relayStatus.value != cur->relayStatus.value) {
+		pre->relayStatus.value = cur->relayStatus.value;
 
-		evtData.state.value = cur->relayState.value;
-		evtData.state.str   = cur->relayState.str;
+		evtData.state.value = cur->relayStatus.value;
+		evtData.state.str   = cur->relayStatus.str;
 
-		// For off, include totals with the event data
-		if (appEmtrState_off == cur->relayState.value) {
-			MUTEX_GET(pCtrl);
-			readTotals(pCtrl, &evtData.state.totals);
-			MUTEX_PUT(pCtrl);
-		}
+		notify(pCtrl, appEmtrEvtCode_relayState, &evtData);
+	}
 
-		notify(pCtrl, appEmtrEvtCode_state, &evtData);
+	/*
+	 * outputStatus should follow relayStatus
+	 *
+	 * There may be up to 20 ms lag between relayStatus change
+	 * and outputStatus changing to match
+	 *
+	 * outputStatus not matching relayStatus indicates relay failure
+	 */
+	if (pre->outputStatus.value != cur->outputStatus.value) {
+		pre->outputStatus.value = cur->outputStatus.value;
+
+		evtData.state.value = cur->outputStatus.value;
+		evtData.state.str   = cur->outputStatus.str;
+
+		notify(pCtrl, appEmtrEvtCode_outputState, &evtData);
 	}
 
 	if (pre->alarm.flags.mask != cur->alarm.flags.mask) {
