@@ -285,7 +285,7 @@ void testTask(void* arg)
 
 	while (1)
 	{
-		vTaskDelay(pdMS_TO_TICKS(2000));
+		vTaskDelay(pdMS_TO_TICKS(5000));
 
 		if (inpDrvStateRead(inpId_switch1, &inpState) == ESP_OK) {
 			if (inpStatePrv != inpState) {
