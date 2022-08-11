@@ -18,20 +18,5 @@ if not exist %INP% (
 )
 
 set OUTP=v%VERS%\emtr_fw.c
-set TEMP=v%VERS%\temp.c
 
-xxd -i -a -c 16 %INP% %TEMP%
-
-echo // EMTR %VERS% > %OUTP%
-
-exit /B 1
-
-set /a count=0
-for /f "tokens=*" %%G in (%OUTP) do (
-)
-
-if exist %OUTP% (echo firmware file written to %OUTP%)
-
-::sed -i "1i // EMTR ${VERS}" ${OUTP}
-::sed -i 's/^unsigned char .*$/const unsigned char emtrFwBin[] = {/' ${OUTP}
-::sed -i 's/^unsigned int .*$/const unsigned int emtrFwBinLen = sizeof(emtrFwBin);/' ${OUTP}
+python gen_c_file.py emtrFwBin %INP% %OUTP%

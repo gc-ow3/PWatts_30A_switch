@@ -26,7 +26,7 @@ then
   exit
 fi
 
-xxd -i -a -c 16 ${INP} ${OUTP}
+python3 gen_c_file.py emtrFwBin  ${INP} ${OUTP}
 
 if [ ! -f ${OUTP} ]
 then
