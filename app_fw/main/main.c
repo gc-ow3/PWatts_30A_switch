@@ -287,22 +287,9 @@ void testTask(void* arg)
 	{
 		vTaskDelay(pdMS_TO_TICKS(5000));
 
-		if (inpDrvStateRead(inpId_switch1, &inpState) == ESP_OK) {
-			if (inpStatePrv != inpState) {
-				inpStatePrv = inpState;
-
-				if (inpState_active == inpState) {
-					printf("Turn on relay\r\n");
-					appEmtrDrvSetRelay(true);
-				} else {
-					printf("Turn off relay\r\n");
-					appEmtrDrvSetRelay(false);
-				}
-				printf("\r\n");
-			}
-		}
-
 		appEmtrStatus_t		eStatus;
+
+		printf("-----------------------\r\n");
 
 		status = appEmtrDrvGetStatus(&eStatus);
 		if (ESP_OK == status) {
@@ -346,6 +333,20 @@ void testTask(void* arg)
 			ESP_LOGE(TAG, "Error %d reading EMTR instant", status);
 		}
 
+		if (inpDrvStateRead(inpId_switch1, &inpState) == ESP_OK) {
+			if (inpStatePrv != inpState) {
+				inpStatePrv = inpState;
+
+				if (inpState_active == inpState) {
+					printf("Turn on relay\r\n");
+					appEmtrDrvSetRelay(true);
+				} else {
+					printf("Turn off relay\r\n");
+					appEmtrDrvSetRelay(false);
+				}
+				printf("\r\n");
+			}
+		}
 	}
 }
 
