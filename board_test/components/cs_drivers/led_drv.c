@@ -88,9 +88,9 @@ esp_err_t ledDrvInit(void)
 		chan->info = &chanInfo[i];
 
 		// Outputs initially off
-		gpio_set_level(chan->info->gpio.red, 0);
-		gpio_set_level(chan->info->gpio.grn, 0);
-		gpio_set_level(chan->info->gpio.blu, 0);
+		gpio_set_level(chan->info->gpio.red, 1);
+		gpio_set_level(chan->info->gpio.grn, 1);
+		gpio_set_level(chan->info->gpio.blu, 1);
 
 		pinCfg.pin_bit_mask =
 			(1ULL << chan->info->gpio.red) |
@@ -138,27 +138,27 @@ esp_err_t ledDrvSetMode(ledId_t led, ledMode_t mode)
 	switch (mode)
 	{
 	case ledMode_off:
-		gpio_set_level(info->gpio.red, 0);
-		gpio_set_level(info->gpio.grn, 0);
-		gpio_set_level(info->gpio.blu, 0);
+		gpio_set_level(info->gpio.red, 1);
+		gpio_set_level(info->gpio.grn, 1);
+		gpio_set_level(info->gpio.blu, 1);
 		break;
 
 	case ledMode_red:
-		gpio_set_level(info->gpio.red, 1);
-		gpio_set_level(info->gpio.grn, 0);
-		gpio_set_level(info->gpio.blu, 0);
+		gpio_set_level(info->gpio.red, 0);
+		gpio_set_level(info->gpio.grn, 1);
+		gpio_set_level(info->gpio.blu, 1);
 		break;
 
 	case ledMode_grn:
-		gpio_set_level(info->gpio.red, 0);
-		gpio_set_level(info->gpio.grn, 1);
-		gpio_set_level(info->gpio.blu, 0);
+		gpio_set_level(info->gpio.red, 1);
+		gpio_set_level(info->gpio.grn, 0);
+		gpio_set_level(info->gpio.blu, 1);
 		break;
 
 	case ledMode_blu:
-		gpio_set_level(info->gpio.red, 0);
-		gpio_set_level(info->gpio.grn, 0);
-		gpio_set_level(info->gpio.blu, 1);
+		gpio_set_level(info->gpio.red, 1);
+		gpio_set_level(info->gpio.grn, 1);
+		gpio_set_level(info->gpio.blu, 0);
 		break;
 
 	default:

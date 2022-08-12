@@ -5,14 +5,15 @@
  *      Author: wesd
  */
 
+#include "sdkconfig.h"
 #include <esp_err.h>
+#include <esp_log.h>
 #include <driver/gpio.h>
 #include <driver/uart.h>
-#include <esp_log.h>
 #include "cs_common.h"
 #include "cs_emtr_drv.h"
-//#include "xmodem.h"
-//#include "fw_file_check.h"
+#include "xmodem.h"
+#include "fw_file_check.h"
 
 static const char TAG[] = {"cs_emtr_drv"};
 
@@ -218,6 +219,8 @@ typedef struct {
 // Private functions
 ////////////////////////////////////////////////////////////////////////////////
 
+static void checkFwUpdate(emtrCtrl_t* pCtrl);
+
 static esp_err_t sockInit(emtrCtrl_t * sock);
 
 static void sockTerm(emtrCtrl_t * pCtrl);
@@ -255,9 +258,7 @@ static void resetEmtrAccumulators(accEnergy_t * eAccum);
 
 static void ctrlTask(void * params);
 
-#if 0
 static esp_err_t emtrUpgrade(emtrCtrl_t * pCtrl, const uint8_t * fwFile);
-#endif
 
 static void timerCallback(TimerHandle_t timerHandle);
 
@@ -416,27 +417,8 @@ esp_err_t csEmtrDrvInit(const csEmtrDrvConf_t * conf)
 		ESP_LOGE(TAG, "Failed to start EMTR application");
 	}
 
-#if 0
-	// Check if there is a firmware update for the EMTR
-	const uint8_t *	fwImg = pCtrl->conf.fwImage;
-
-	if (csFwFileIsValid(fwImg, "emtr")) {
-		const csFwHdr_t *	fwHdr = (const csFwHdr_t *)fwImg;
-
-		if (strcmp(pCtrl->fwVersion, "0.0.0") == 0) {
-			ESP_LOGI(TAG,
-				"Update EMTR firmware to v%u.%u.%u",
-				fwHdr->majorVer, fwHdr->minorVer, fwHdr->patchVer
-			);
-
-			if (emtrUpgrade(pCtrl, fwImg) == ESP_OK) {
-				ESP_LOGI(TAG, "EMTR update completed");
-			} else {
-				ESP_LOGE(TAG, "EMTR update failed");
-			}
-		}
-	}
-#endif
+	// Check if firmware needs to be updated
+	checkFwUpdate(pCtrl);
 
 	pCtrl->isGood = true;
 	emtrCtrl = pCtrl;
@@ -1074,6 +1056,47 @@ const char * csEmtrDrvEventStr(csEmtrEvtCode_t evtCode)
 */
 
 
+static void checkFwUpdate(emtrCtrl_t* pCtrl)
+{
+	if (!pCtrl->conf.features.fwUpdate) {
+		ESP_LOGI(TAG, "Firmware update check is disabled");
+		return;
+	}
+
+	// Check if there is new firmware for the EMTR
+	const uint8_t*	fwImg = pCtrl->conf.fwImage;
+
+	//csFwFilePrintHeader(fwImg);
+
+	if (!csFwFileIsValid(fwImg, "emtr")) {
+		ESP_LOGE(TAG, "Invalid firmware image");
+		return;
+	}
+
+	const csFwHdr_t*	fwHdr = (const csFwHdr_t *)fwImg;
+
+	char	verStr[20];
+	snprintf(
+		verStr, sizeof(verStr),
+		"%u.%u.%u",
+		fwHdr->majorVer, fwHdr->minorVer, fwHdr->patchVer
+	);
+
+	if (strcmp(verStr, pCtrl->fwVersion) == 0) {
+		ESP_LOGI(TAG, "EMTR firmware %s is current", verStr);
+		return;
+	}
+
+	ESP_LOGI(TAG, "Update EMTR firmware to v%s", verStr);
+
+	if (emtrUpgrade(pCtrl, fwImg) == ESP_OK) {
+		ESP_LOGI(TAG, "EMTR update completed");
+	} else {
+		ESP_LOGE(TAG, "EMTR update failed");
+	}
+}
+
+
 static esp_err_t sockInit(emtrCtrl_t * pCtrl)
 {
 	int						i;
@@ -1645,7 +1668,7 @@ static esp_err_t emtrRunModeGet(
 
 	// Unpack response
 	// Offset  Length  Content
-	//      0       1  Run mode: 'B' == boot loader, appTag == application
+	//      0       1  Run mode: 'B' == boot loader, appTag == application,
 	//      1       1  Major version
 	//      2       1  Minor version
 	//      3       1  Patch version
@@ -2008,7 +2031,6 @@ static void ctrlTask(void * params)
 }
 
 
-#if 0
 static esp_err_t startXmodemTransfer(emtrCtrl_t * pCtrl)
 {
 	uint8_t		cmd = pCtrl->conf.cmd.xmodemStart;
@@ -2118,7 +2140,6 @@ exitUpdate:
 	xTimerReset(pCtrl->timer, pdMS_TO_TICKS(20));
 	return status;
 }
-#endif
 
 
 static void timerCallback(TimerHandle_t timer)

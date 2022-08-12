@@ -5,6 +5,7 @@
  *      Author: wesd
  */
 
+#include "sdkconfig.h"
 #include <driver/gpio.h>
 #include <driver/uart.h>
 #include <esp_err.h>
@@ -13,25 +14,17 @@
 #include "pinout.h"
 #include "cs_common.h"
 #include "cs_packer.h"
-//#include "event_callback.h"
 #include "app_emtr_drv.h"
 
-static const char TAG[] = {"app_emtr_drv"};
+static const char TAG[] = {"app_emtr"};
 
 ////////////////////////////////////////////////////////////////////////////////
 // Convenience macros
 ////////////////////////////////////////////////////////////////////////////////
 
-// Sleep for a number of milliseconds
-#define	CS_SLEEP_MS(t)	vTaskDelay(pdMS_TO_TICKS(t))
-
-// Read number of seconds since boot
-#define	TIME_SEC()		(esp_timer_get_time()/1000000)
-#define	TIME_MS()		(esp_timer_get_time()/1000)
-
 // Acquire and release mutex
-#define MUTEX_GET(ctrl)	xSemaphoreTake((ctrl)->mutex, portMAX_DELAY)
-#define MUTEX_PUT(ctrl)	xSemaphoreGive((ctrl)->mutex)
+#define MUTEX_GET(ctrl)		xSemaphoreTake((ctrl)->mutex, portMAX_DELAY)
+#define MUTEX_PUT(ctrl)		xSemaphoreGive((ctrl)->mutex)
 
 ////////////////////////////////////////////////////////////////////////////////
 // Defines
@@ -49,18 +42,18 @@ static const char TAG[] = {"app_emtr_drv"};
 #define CMD_GET_TOTALS		(0x02)
 #define CMD_GET_INST_VALUES	(0x03)
 
-// Controlling power
-//#define CMD_SET_RELAY		(0x04)	// ToDo
+// Set relay state
+#define CMD_SET_RELAY		(0x05)
 
 // Test commands
 //#define CMD_SELF_TEST_START	(0x11)
 //#define CMD_SET_TEST_MODE	(0x12)
 
 // Calibration
-#define CMD_CAL_GET				(0x0D)
-#define CMD_CAL_SET				(0x0E)
-#define CMD_SET_U_GAIN			(0x1A)
-#define CMD_SET_I_GAIN			(0x1B)
+//#define CMD_CAL_GET				(0x0D)
+//#define CMD_CAL_SET				(0x0E)
+//#define CMD_SET_U_GAIN			(0x1A)
+//#define CMD_SET_I_GAIN			(0x1B)
 //#define CMD_READ_I_LEAK			(0x40)
 //#define CMD_SET_0P1_MA_LEAK		(0x41)
 //#define CMD_SET_1P0_MA_LEAK		(0x42)
@@ -79,7 +72,6 @@ typedef struct {
 	uint64_t			curTimeMs;
 	csEmtrDrvConf_t		emtrConf;
 	SemaphoreHandle_t	mutex;
-	//cbHandle_t			cbHandle;
 	appEmtrStatus_t		curDeviceStatus;
 	appEmtrStatus_t		preDeviceStatus;
 	appEmtrInstant_t	preInstEnergy;
@@ -107,7 +99,9 @@ static esp_err_t readTotals(drvCtrl_t * pCtrl, appEmtrTotals_t * ret);
 
 static esp_err_t readInstValues(drvCtrl_t * pCtrl, appEmtrInstant_t * ret);
 
-static void drvTask(void* arg);
+static esp_err_t setRelay(drvCtrl_t * pCtrl, bool on);
+
+static void emtrTask(void* arg);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Constant data
@@ -121,11 +115,12 @@ extern const unsigned char	emtrFwBin[];
  *
  */
 static const csEmtrDrvConf_t	emtrDrvConfInit = {
-	.appTag             = 'P',	// 'P' for Powder Watts?
+	.appTag             = 'P',	// 'P'owder Watts
 	.numSockets         = 0,
 	.sockInfo			= NULL,
 	.numAccChan			= 0,	// In addition to the one built into the driver
 	.features = {
+		.fwUpdate    = 1,	// Enable check for firmware update
 		.plugDetect  = 0,
 		.loadDetect  = 0,
 		.hcci        = 0,
@@ -175,8 +170,6 @@ static const csEmtrDrvConf_t	emtrDrvConfInit = {
 // Task control structure
 static drvCtrl_t *	drvCtrl;
 
-//#include "fw_file_check.h"
-
 /**
  * \brief Initialize, but not start the EMTR driver
  *
@@ -207,12 +200,6 @@ esp_err_t appEmtrDrvInit(void)
 		goto exitMem;
 	}
 
-#if 0
-	if ((status = eventRegisterCreate(&pCtrl->cbHandle)) != ESP_OK) {
-		goto exitMem;
-	}
-#endif
-
 	// Set up the EMTR driver configuration
 	pCtrl->emtrConf = emtrDrvConfInit;
 
@@ -235,6 +222,7 @@ esp_err_t appEmtrDrvInit(void)
 exitMem:
 	// Release allocate resources
 	free(pCtrl);
+
 	return status;
 }
 
@@ -271,13 +259,11 @@ esp_err_t appEmtrDrvStart()
 	}
 
 	BaseType_t	xStatus;
-
-	// Start the control task
 	xStatus = xTaskCreate(
-		drvTask,
-		"app_emtr_drv",
-		3000,
-		(void *)pCtrl,
+		emtrTask,
+		"app_emtr",
+		4000,
+		(void*)pCtrl,
 		5,
 		NULL
 	);
@@ -290,27 +276,6 @@ esp_err_t appEmtrDrvStart()
 	pCtrl->isRunning = true;
 	return ESP_OK;
 }
-
-
-#if 0
-/**
- * \brief Register to be notified of driver events
- */
-esp_err_t appEmtrDrvCallbackRegister(eventCbFunc_t cbFunc, uint32_t cbData)
-{
-	if (!cbFunc) {
-		return ESP_ERR_INVALID_ARG;
-	}
-
-	drvCtrl_t *	pCtrl = drvCtrl;
-	if (!pCtrl) {
-		// Not initialized
-		return ESP_ERR_INVALID_STATE;
-	}
-
-	return eventRegisterCallback(pCtrl->cbHandle, cbFunc, cbData);
-}
-#endif
 
 
 /**
@@ -346,7 +311,7 @@ esp_err_t appEmtrDrvGetStatus(appEmtrStatus_t * ret)
   * \param [out] ret Pointer to structure to receive the data
   *
  */
-esp_err_t appEmtrDrvGetInstValues(appEmtrInstant_t * ret)
+esp_err_t appEmtrDrvGetInstant(appEmtrInstant_t * ret)
 {
 	if (NULL == ret) {
 		return ESP_ERR_INVALID_ARG;
@@ -394,7 +359,24 @@ esp_err_t appEmtrDrvGetTotals(appEmtrTotals_t * ret)
 }
 
 
-#if 0	// ToDo Remove or update
+esp_err_t appEmtrDrvSetRelay(bool on)
+{
+	drvCtrl_t *	pCtrl;
+	esp_err_t	status;
+
+	if ((status = enterApi(&pCtrl)) != ESP_OK) {
+		return status;
+	}
+
+	MUTEX_GET(pCtrl);
+	status = setRelay(pCtrl, on);
+	MUTEX_PUT(pCtrl);
+
+	return status;
+}
+
+
+#if 0
 esp_err_t pwEmtrDrvFactoryTest(appEmtrTestId_t testId, uint8_t duration)
 {
 	if (0 == duration) {
@@ -418,6 +400,7 @@ esp_err_t pwEmtrDrvFactoryTest(appEmtrTestId_t testId, uint8_t duration)
 }
 #endif
 
+
 const char * appEmtrDrvStateStr(appEmtrState_t value)
 {
 	switch(value)
@@ -440,6 +423,7 @@ cJSON * appEmtrDrvAlarmListJson(appEmtrAlarm_t alarm)
 	const char *	sList[8];
 	int				sCount = 0;
 
+#if 0	// ToDo define alarm flag bits
 	if (alarm.item.acLine) {
 		sList[sCount++] = "acLine";
 	}
@@ -452,6 +436,7 @@ cJSON * appEmtrDrvAlarmListJson(appEmtrAlarm_t alarm)
 	if (alarm.item.underload) {
 		sList[sCount++] = "underload";
 	}
+#endif
 
 	return cJSON_CreateStringArray(sList, sCount);
 }
@@ -492,7 +477,7 @@ static esp_err_t enterApi(drvCtrl_t ** pCtrl)
 static esp_err_t readStatus(drvCtrl_t* pCtrl, appEmtrStatus_t* ret)
 {
 	esp_err_t	status;
-	uint8_t		resp[5];	// Expect 5 bytes returned
+	uint8_t		resp[4];	// Expect 4 bytes returned
 	int			ioLen = sizeof(resp);
 
 	status = csEmtrDrvCommand(CMD_GET_STATUS, NULL, resp, &ioLen);
@@ -503,62 +488,53 @@ static esp_err_t readStatus(drvCtrl_t* pCtrl, appEmtrStatus_t* ret)
 
 	// Unpack response
 	// Byte  Content
-	//    0  Water level 0..5
-	//    1  unused
-	//    2  Pump state
-	//    3  Alarm bit mask
+	//    0  Relay status
+	//    1  Output status
+	//    2  Alarm bit mask
 	//       Bit   Function
 	//         7   Reserved
 	//         6   Reserved
-	//         5   AC Line
+	//         5   Reserved
 	//         4   Reserved
-	//         3   High temperature
-	//         2   Overload
-	//         1   Underload
+	//         3   Reserved
+	//         2   Reserved
+	//         1   Reserved
 	//         0   Reserved
-	//    4  Temperature (degrees C)
+	//    3  Temperature (degrees C)
 
-	appEmtrState_t	emtrState;
-
-	// Decode pump state code
-	switch (resp[2])
-	{
-	case 0x00:
-		emtrState = appEmtrState_off;
-		break;
-	case 0x01:
-		emtrState = appEmtrState_on;
-		break;
-	default:
-		ESP_LOGE(TAG, "EMTR returns state %d", resp[2]);
-		// Default to off
-		emtrState = appEmtrState_off;
-		break;
+	// Decode relay state
+	if (resp[0] & 0x01) {
+		ret->relayStatus.value = appEmtrState_on;
+	} else {
+		ret->relayStatus.value = appEmtrState_off;
 	}
+	ret->relayStatus.str = appEmtrDrvStateStr(ret->relayStatus.value);
 
-	ret->relayState.value = emtrState;
-	ret->relayState.str = appEmtrDrvStateStr(emtrState);
+	// Decode output state
+	if (resp[1] & 0x01) {
+		ret->outputStatus.value = appEmtrState_on;
+	} else {
+		ret->outputStatus.value = appEmtrState_off;
+	}
+	ret->outputStatus.str = appEmtrDrvStateStr(ret->outputStatus.value);
 
-	/* ToDo
 	// Unpack the flags byte
-	uint8_t	flags = resp[3];
+	uint8_t	alarms = resp[2];
 
 	// Map the alarm bit mask to the flags structure
-	wwPumpAlarm_t *	rFlag = &ret->alarm.flags;
+	appEmtrAlarm_t*	rFlag = &ret->alarm.value;
 
-	rFlag->item.resvd_1    = (flags >> 7) & 1;
-	rFlag->item.resvd_2    = (flags >> 6) & 1;
-	rFlag->item.acLine     = (flags >> 5) & 1;
-	rFlag->item.resvd_3    = (flags >> 4) & 1;
-	rFlag->item.highTemp   = (flags >> 3) & 1;
-	rFlag->item.overload   = (flags >> 2) & 1;
-	rFlag->item.underload  = (flags >> 1) & 1;
-	rFlag->item.waterLevel = (flags >> 0) & 1;
+	rFlag->item.resvd_7  = (alarms >> 7) & 1;
+	rFlag->item.resvd_6  = (alarms >> 6) & 1;
+	rFlag->item.resvd_5  = (alarms >> 5) & 1;
+	rFlag->item.resvd_4  = (alarms >> 4) & 1;
+	rFlag->item.resvd_3  = (alarms >> 3) & 1;
+	rFlag->item.resvd_2  = (alarms >> 2) & 1;
+	rFlag->item.resvd_1  = (alarms >> 1) & 1;
+	rFlag->item.resvd_0  = (alarms >> 0) & 1;
 
 	// Unpack the temperature
-	ret->tempC = resp[4];
-
-	*/
+	ret->tempC = resp[3];
 
 	// Enable this block to print changes in flag bits
 #if 0
@@ -570,14 +546,22 @@ static esp_err_t readStatus(drvCtrl_t* pCtrl, appEmtrStatus_t* ret)
 		const char *	flagList[8];
 		int				flagCt = 0;
 
-		if (rFlag->item.acLine)
-			flagList[flagCt++] = "acLine";
-		if (rFlag->item.highTemp)
-			flagList[flagCt++] = "temp";
-		if (rFlag->item.overload)
-			flagList[flagCt++] = "overLd";
-		if (rFlag->item.underload)
-			flagList[flagCt++] = "underLd";
+		if (rFlag->item.resvd_7)
+			flagList[flagCt++] = "rsvd-7";
+		if (rFlag->item.resvd_6)
+			flagList[flagCt++] = "rsvd-6";
+		if (rFlag->item.resvd_5)
+			flagList[flagCt++] = "rsvd-5";
+		if (rFlag->item.resvd_4)
+			flagList[flagCt++] = "rsvd-4";
+		if (rFlag->item.resvd_3)
+			flagList[flagCt++] = "rsvd-3";
+		if (rFlag->item.resvd_2)
+			flagList[flagCt++] = "rsvd-2";
+		if (rFlag->item.resvd_1)
+			flagList[flagCt++] = "rsvd-1";
+		if (rFlag->item.resvd_0)
+			flagList[flagCt++] = "rsvd-0";
 
 		char	flagStr[60] = {'\0'};
 		int		i;
@@ -599,8 +583,7 @@ static esp_err_t readStatus(drvCtrl_t* pCtrl, appEmtrStatus_t* ret)
 
 static esp_err_t readTotals(drvCtrl_t * pCtrl, appEmtrTotals_t * ret)
 {
-	/*** ToDo
-	uint8_t		resp[24];	// Expect 24 bytes returned
+	uint8_t		resp[16];	// Expect 16 bytes returned
 	int			ioLen;
 	esp_err_t	status;
 
@@ -614,20 +597,15 @@ static esp_err_t readTotals(drvCtrl_t * pCtrl, appEmtrTotals_t * ret)
 	// Offset  Len  Content
 	//      0    4  Epoch
 	//      4    4  On Duration
-	//      8    4  Pump Cycles
-	//     12    4  Relay Cycles
-	//     16    4  Test Cycles
-	//     20    4  Energy
+	//      8    4  Relay Cycles
+	//     12    4  Watt-Hours
 	csPacker_t	unpack;
 
 	csPackInit(&unpack, resp, sizeof(resp));
 	csUnpackBEU32(&unpack, &ret->epoch);
 	csUnpackBEU32(&unpack, &ret->onDuration);
-	csUnpackBEU32(&unpack, &ret->pumpCycles);
 	csUnpackBEU32(&unpack, &ret->relayCycles);
-	csUnpackBEU32(&unpack, &ret->testCycles);
 	csUnpackBEU32(&unpack, &ret->dWattH);
-	***/
 
 	return ESP_OK;
 }
@@ -635,7 +613,6 @@ static esp_err_t readTotals(drvCtrl_t * pCtrl, appEmtrTotals_t * ret)
 
 static esp_err_t readInstValues(drvCtrl_t * pCtrl, appEmtrInstant_t * ret)
 {
-	/*** ToDo
 	uint8_t		resp[16];	// Expect 16 bytes returned
 	int			ioLen;
 	esp_err_t	status;
@@ -653,7 +630,7 @@ static esp_err_t readInstValues(drvCtrl_t * pCtrl, appEmtrInstant_t * ret)
 	//      4    2  dWatts
 	//      6    2  pFactor
 	//      8    4  seconds power has been on
-	//     12    4  seconds triacs have been on
+	//     12    4  seconds relay has been on
 	csPacker_t	unpack;
 
 	csPackInit(&unpack, resp, sizeof(resp));
@@ -661,11 +638,23 @@ static esp_err_t readInstValues(drvCtrl_t * pCtrl, appEmtrInstant_t * ret)
 	csUnpackBEU16(&unpack, &ret->mAmps);
 	csUnpackBEU16(&unpack, &ret->dWatts);
 	csUnpackBEU16(&unpack, &ret->pFactor);
-	csUnpackBEU32(&unpack, &ret->powerOnSecs);
-	csUnpackBEU32(&unpack, &ret->pumpOnSecs);
-	***/
+	csUnpackBEU32(&unpack, &ret->uptime);
+	csUnpackBEU32(&unpack, &ret->relayOnSecs);
 
 	return ESP_OK;
+}
+
+
+static esp_err_t setRelay(drvCtrl_t * pCtrl, bool on)
+{
+	uint8_t		payload[4] = {0, 0, 0, 0};
+
+	payload[0] = on ? 1 : 0;
+	payload[1] = 0;
+	payload[2] = 0;
+	payload[3] = 0;
+
+	return csEmtrDrvCommand(CMD_SET_RELAY, payload, NULL, NULL);
 }
 
 
@@ -728,29 +717,37 @@ static void checkEmtr(drvCtrl_t* pCtrl)
 		notify(pCtrl, appEmtrEvtCode_temperature, &evtData);
 	}
 
-	if (pre->relayState.value != cur->relayState.value) {
-		pre->relayState.value = cur->relayState.value;
+	if (pre->relayStatus.value != cur->relayStatus.value) {
+		pre->relayStatus.value = cur->relayStatus.value;
 
-		evtData.state.value = cur->relayState.value;
-		evtData.state.str   = cur->relayState.str;
+		evtData.state.value = cur->relayStatus.value;
+		evtData.state.str   = cur->relayStatus.str;
 
-		// On off-cycle, include totals with the event data
-		if (appEmtrState_off == cur->relayState.value) {
-			MUTEX_GET(pCtrl);
-			readTotals(pCtrl, &evtData.state.totals);	// ToDo
-			MUTEX_PUT(pCtrl);
-		}
-
-		notify(pCtrl, appEmtrEvtCode_state, &evtData);
+		notify(pCtrl, appEmtrEvtCode_relayState, &evtData);
 	}
 
-	if (pre->alarm.flags.mask != cur->alarm.flags.mask) {
-		pre->alarm.flags = cur->alarm.flags;
+	/*
+	 * outputStatus should follow relayStatus
+	 *
+	 * There may be up to 20 ms lag between relayStatus change
+	 * and outputStatus changing to match
+	 *
+	 * outputStatus not matching relayStatus indicates relay failure
+	 */
+	if (pre->outputStatus.value != cur->outputStatus.value) {
+		pre->outputStatus.value = cur->outputStatus.value;
 
-		/* ToDo
-		evtData.alarmFlags.value  = cur->alarm.flags;
-		notify(pCtrl, appEmtrEvtCode_alarmFlags, &evtData);
-		*/
+		evtData.state.value = cur->outputStatus.value;
+		evtData.state.str   = cur->outputStatus.str;
+
+		notify(pCtrl, appEmtrEvtCode_outputState, &evtData);
+	}
+
+	if (pre->alarm.value.mask != cur->alarm.value.mask) {
+		pre->alarm.value = cur->alarm.value;
+
+		evtData.alarms.flags  = cur->alarm.value;
+		notify(pCtrl, appEmtrEvtCode_alarms, &evtData);
 	}
 
 	appEmtrInstant_t	inst;
@@ -762,29 +759,26 @@ static void checkEmtr(drvCtrl_t* pCtrl)
 		// Copy current status to the control structure
 		*cur = inst;
 
+		appEmtrEvtData_t	evtData;
+
 		// Check for changes and notify registered clients
 		if (pre->dVolts != cur->dVolts) {
 			pre->dVolts = cur->dVolts;
 
-			appEmtrEvtData_t	evtData = {
-				.dVolts = {
-					.value = cur->dVolts
-				}
-			};
+			evtData.dVolts.value = cur->dVolts;
 			notify(pCtrl, appEmtrEvtCode_dVolts, &evtData);
 		}
 	}
 }
 
 
-static void drvTask(void* arg)
+static void emtrTask(void* arg)
 {
-	drvCtrl_t*	pCtrl = (drvCtrl_t*)arg;
+	drvCtrl_t*	pCtrl = arg;
 
 	while (1)
 	{
-		// Update EMTR status 5x per second
-		CS_SLEEP_MS(200);
+		CS_SLEEP_MS(1000);
 		checkEmtr(pCtrl);
 	}
 }

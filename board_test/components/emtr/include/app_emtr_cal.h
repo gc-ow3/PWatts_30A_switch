@@ -37,6 +37,7 @@ typedef struct {
 
 esp_err_t appEmtrCalibrationUnpack(uint8_t * inp, int inpLen, appEmtrCalData_t * cal);
 
+
 #ifdef __cplusplus
 }
 #endif

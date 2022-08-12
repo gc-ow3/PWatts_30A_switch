@@ -43,6 +43,8 @@ typedef enum {
 	pwrSigReason_demand = 2,
 } pwrSigReason_t;
 
+const char* pwrSigReasonStr(pwrSigReason_t reason);
+
 
 typedef struct {
 	pwrSigReason_t	reason;

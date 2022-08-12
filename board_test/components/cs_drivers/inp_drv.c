@@ -27,8 +27,10 @@ typedef struct {
 } inpCtrl_t;
 
 typedef struct {
-	inpCbFunc_t	cbFunc;
-	void*		cbData;
+	struct {
+		inpCbFunc_t	func;
+		void*		data;
+	} callback;
 	bool		isRunning;
 	inpCtrl_t*	inp;
 } taskCtrl_t;
@@ -80,6 +82,9 @@ esp_err_t inpDrvInit(inpCbFunc_t cbFunc, void* cbData)
 		return ESP_ERR_NO_MEM;
 	}
 
+	pCtrl->callback.func = cbFunc;
+	pCtrl->callback.data = cbData;
+
 	// Set up the discrete GPIO inputs
     inpCtrl_t*	inp;
     int 		i;
@@ -125,7 +130,7 @@ esp_err_t inpDrvStart(void)
 		NULL
     );
     if (pdPASS == xStatus) {
-    	printf("Input task started");
+    	//printf("Input task started\r\n");
     }
 
     pCtrl->isRunning = true;
@@ -172,11 +177,11 @@ static void inpTask(void* arg)
     			// Note change of state
     			inp->state = curState;
 
-    			if (pCtrl->cbFunc) {
-    				pCtrl->cbFunc(
+    			if (pCtrl->callback.func) {
+    				pCtrl->callback.func(
     					inp->info->id,
 						(curState == inpState_active),
-						pCtrl->cbData
+						pCtrl->callback.data
 					);
     			}
     		}

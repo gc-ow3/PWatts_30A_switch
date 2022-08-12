@@ -7,6 +7,7 @@
 #include <esp_err.h>
 #include <esp_log.h>
 
+#include "cs_common.h"
 #include "cs_packer.h"
 #include "emtr_pwr_sig.h"
 
@@ -15,13 +16,6 @@ static const char TAG[] = {"pwr_sig"};
 ////////////////////////////////////////////////////////////////////////////////
 // Convenience macros
 ////////////////////////////////////////////////////////////////////////////////
-
-// Sleep for a number of milliseconds
-#define	CS_SLEEP_MS(t)	vTaskDelay(pdMS_TO_TICKS(t))
-
-// Read number of seconds since boot
-#define	TIME_SEC()		(esp_timer_get_time()/1000000)
-#define	TIME_MS()		(esp_timer_get_time()/1000)
 
 // Acquire and release mutex
 #define MUTEX_GET(ctrl)		xSemaphoreTake((ctrl)->mutex, portMAX_DELAY)
@@ -195,6 +189,20 @@ esp_err_t pwrSigCount(uint32_t * ret)
 
 	*ret = pCtrl->sigCount;
 	return ESP_OK;
+}
+
+
+const char* pwrSigReasonStr(pwrSigReason_t reason)
+{
+	switch (reason)
+	{
+	case pwrSigReason_on:
+		return "Off";
+	case pwrSigReason_off:
+		return "Off";
+	default:
+		return "Undefined";
+	}
 }
 
 

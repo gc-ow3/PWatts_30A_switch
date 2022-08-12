@@ -10,7 +10,6 @@
 #include <driver/uart.h>
 #include <cJSON.h>
 
-//#include "event_callback.h"
 #include "cs_emtr_drv.h"
 
 #ifdef __cplusplus
@@ -23,11 +22,11 @@ typedef union {
 	struct {
 		uint8_t	resvd_0    : 1;
 		uint8_t	resvd_1    : 1;
-		uint8_t	acLine     : 1;
+		uint8_t	resvd_2    : 1;
 		uint8_t	resvd_3    : 1;
-		uint8_t	highTemp   : 1;
-		uint8_t	overload   : 1;
-		uint8_t	underload  : 1;
+		uint8_t	resvd_4    : 1;
+		uint8_t	resvd_5    : 1;
+		uint8_t	resvd_6    : 1;
 		uint8_t	resvd_7    : 1;
 	} item;
 } appEmtrAlarm_t;
@@ -44,14 +43,18 @@ typedef enum {
  *
  */
 typedef struct {
-	uint8_t				tempC;
 	struct {
 		appEmtrState_t	value;
 		const char *	str;
-	}					relayState;
+	}	relayStatus;
 	struct {
-		appEmtrAlarm_t	flags;
-	}					alarm;
+		appEmtrState_t	value;
+		const char *	str;
+	}	outputStatus;
+	struct {
+		appEmtrAlarm_t	value;
+	} alarm;
+	uint8_t	tempC;
 } appEmtrStatus_t;
 
 
@@ -74,21 +77,23 @@ typedef struct {
 	uint16_t	mAmps;
 	uint16_t	dWatts;
 	uint16_t	pFactor;
+	uint32_t	uptime;
 	uint32_t	relayOnSecs;
 } appEmtrInstant_t;
 
 typedef enum {
 	appEmtrEvtCode_null = 0,
-	appEmtrEvtCode_state,
+	appEmtrEvtCode_relayState,
+	appEmtrEvtCode_outputState,
 	appEmtrEvtCode_temperature,
 	appEmtrEvtCode_dVolts,
+	appEmtrEvtCode_alarms
 } appEmtrEvtCode_t;
 
 typedef union {
 	struct {
 		appEmtrState_t	value;
 		const char *	str;
-		appEmtrTotals_t	totals;
 	} state;
 	struct {
 		uint8_t		value;
@@ -96,31 +101,29 @@ typedef union {
 	struct {
 		uint16_t	value;
 	} dVolts;
+	struct {
+		appEmtrAlarm_t	flags;
+	} alarms;
 } appEmtrEvtData_t;
+
+typedef void (*appEmtrDrvEventCb_t)(appEmtrEvtCode_t evtCode, appEmtrEvtData_t* evtData, void* cbData);
 
 
 esp_err_t appEmtrDrvInit(void);
 
 esp_err_t appEmtrDrvStart(void);
 
-//esp_err_t appEmtrDrvCallbackRegister(eventCbFunc_t cbFunc, uint32_t cbData);
-
-esp_err_t appEmtrDrvGetInstValues(appEmtrInstant_t * ret);
+esp_err_t appEmtrDrvGetStatus(appEmtrStatus_t * ret);
 
 esp_err_t appEmtrDrvGetTotals(appEmtrTotals_t * ret);
 
-esp_err_t appEmtrDrvGetSignature(uint8_t * buf, int * ioLen);
+esp_err_t appEmtrDrvGetInstant(appEmtrInstant_t * ret);
 
 const char * appEmtrDrvStateStr(appEmtrState_t value);
 
-// The values here correspond to EMTR command codes
-// Do not change them
-typedef enum {
-	appEmtrTestId_lineRelayOn     = 0x03,
-	appEmtrTestId_term            = 0xff,
-} appEmtrTestId_t;
+esp_err_t appEmtrDrvSetRelay(bool on);
 
-esp_err_t appEmtrDrvFactoryTest(appEmtrTestId_t testId, uint8_t duration);
+cJSON * appEmtrDrvAlarmListJson(appEmtrAlarm_t alarm);
 
 #ifdef __cplusplus
 }

@@ -57,6 +57,7 @@ esp_err_t appEmtrCalibrationDataSave(uint8_t * buf, int * len)
 	return csEmtrDrvCommand(0x0E, NULL, buf, len);
 }
 
+
 esp_err_t appEmtrCalibrationUnpack(uint8_t * inp, int inpLen, appEmtrCalData_t * cal)
 {
 #if 0	// ToDo - update for PW
@@ -81,5 +82,3 @@ esp_err_t appEmtrCalibrationUnpack(uint8_t * inp, int inpLen, appEmtrCalData_t *
 	return ESP_ERR_INVALID_STATE;
 #endif
 }
-
-
