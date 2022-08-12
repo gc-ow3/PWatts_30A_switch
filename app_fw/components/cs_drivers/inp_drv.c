@@ -130,7 +130,7 @@ esp_err_t inpDrvStart(void)
 		NULL
     );
     if (pdPASS == xStatus) {
-    	printf("Input task started");
+    	//printf("Input task started\r\n");
     }
 
     pCtrl->isRunning = true;

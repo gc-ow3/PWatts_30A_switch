@@ -56,3 +56,29 @@ esp_err_t appEmtrCalibrationDataSave(uint8_t * buf, int * len)
 {
 	return csEmtrDrvCommand(0x0E, NULL, buf, len);
 }
+
+
+esp_err_t appEmtrCalibrationUnpack(uint8_t * inp, int inpLen, appEmtrCalData_t * cal)
+{
+#if 0	// ToDo - update for PW
+	csPacker_t	pack;
+	uint32_t	temp32;
+
+	csPackInit(&pack, inp, inpLen);
+
+	// Bytes 0-3: U-Gain
+	csUnpackBEU32(&pack, &temp32);
+	cal->uGain = (float)temp32 / (float)0x7fffffff;
+	// Bytes 4-7: I-Gain
+	csUnpackBEU32(&pack, &temp32);
+	cal->iGain = (float)temp32 / (float)0x7fffffff;
+	// Byte 16 HCCI flag
+	csUnpackU8(&pack, &cal->hcci);
+	// Byte 17-18 atmospheric pressure mV
+	csUnpackBEU16(&pack, &cal->atmoMv);
+
+	return csPackStatus(&pack);
+#else
+	return ESP_ERR_INVALID_STATE;
+#endif
+}

@@ -219,6 +219,8 @@ typedef struct {
 // Private functions
 ////////////////////////////////////////////////////////////////////////////////
 
+static void checkFwUpdate(emtrCtrl_t* pCtrl);
+
 static esp_err_t sockInit(emtrCtrl_t * sock);
 
 static void sockTerm(emtrCtrl_t * pCtrl);
@@ -415,36 +417,8 @@ esp_err_t csEmtrDrvInit(const csEmtrDrvConf_t * conf)
 		ESP_LOGE(TAG, "Failed to start EMTR application");
 	}
 
-	// Check if there is a firmware update for the EMTR
-	const uint8_t*	fwImg = pCtrl->conf.fwImage;
-
-	//csFwFilePrintHeader(fwImg);
-
-	if (csFwFileIsValid(fwImg, "emtr")) {
-		const csFwHdr_t*	fwHdr = (const csFwHdr_t *)fwImg;
-
-		char	verStr[20];
-		snprintf(
-			verStr, sizeof(verStr),
-			"%u.%u.%u",
-			fwHdr->majorVer, fwHdr->minorVer, fwHdr->patchVer
-		);
-
-		if (strcmp(verStr, pCtrl->fwVersion) == 0) {
-			ESP_LOGI(TAG, "EMTR firmware %s is current", verStr);
-		} else {
-			ESP_LOGI(TAG,
-				"Update EMTR firmware to v%u.%u.%u",
-				fwHdr->majorVer, fwHdr->minorVer, fwHdr->patchVer
-			);
-
-			if (emtrUpgrade(pCtrl, fwImg) == ESP_OK) {
-				ESP_LOGI(TAG, "EMTR update completed");
-			} else {
-				ESP_LOGE(TAG, "EMTR update failed");
-			}
-		}
-	}
+	// Check if firmware needs to be updated
+	checkFwUpdate(pCtrl);
 
 	pCtrl->isGood = true;
 	emtrCtrl = pCtrl;
@@ -1080,6 +1054,47 @@ const char * csEmtrDrvEventStr(csEmtrEvtCode_t evtCode)
 ********************************************************************************
 ********************************************************************************
 */
+
+
+static void checkFwUpdate(emtrCtrl_t* pCtrl)
+{
+	if (!pCtrl->conf.features.fwUpdate) {
+		ESP_LOGI(TAG, "Firmware update check is disabled");
+		return;
+	}
+
+	// Check if there is new firmware for the EMTR
+	const uint8_t*	fwImg = pCtrl->conf.fwImage;
+
+	//csFwFilePrintHeader(fwImg);
+
+	if (!csFwFileIsValid(fwImg, "emtr")) {
+		ESP_LOGE(TAG, "Invalid firmware image");
+		return;
+	}
+
+	const csFwHdr_t*	fwHdr = (const csFwHdr_t *)fwImg;
+
+	char	verStr[20];
+	snprintf(
+		verStr, sizeof(verStr),
+		"%u.%u.%u",
+		fwHdr->majorVer, fwHdr->minorVer, fwHdr->patchVer
+	);
+
+	if (strcmp(verStr, pCtrl->fwVersion) == 0) {
+		ESP_LOGI(TAG, "EMTR firmware %s is current", verStr);
+		return;
+	}
+
+	ESP_LOGI(TAG, "Update EMTR firmware to v%s", verStr);
+
+	if (emtrUpgrade(pCtrl, fwImg) == ESP_OK) {
+		ESP_LOGI(TAG, "EMTR update completed");
+	} else {
+		ESP_LOGE(TAG, "EMTR update failed");
+	}
+}
 
 
 static esp_err_t sockInit(emtrCtrl_t * pCtrl)

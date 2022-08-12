@@ -115,11 +115,12 @@ extern const unsigned char	emtrFwBin[];
  *
  */
 static const csEmtrDrvConf_t	emtrDrvConfInit = {
-	.appTag             = 'P',
+	.appTag             = 'P',	// 'P'owder Watts
 	.numSockets         = 0,
 	.sockInfo			= NULL,
 	.numAccChan			= 0,	// In addition to the one built into the driver
 	.features = {
+		.fwUpdate    = 1,	// Enable check for firmware update
 		.plugDetect  = 0,
 		.loadDetect  = 0,
 		.hcci        = 0,
@@ -422,20 +423,18 @@ cJSON * appEmtrDrvAlarmListJson(appEmtrAlarm_t alarm)
 	const char *	sList[8];
 	int				sCount = 0;
 
-#if 0
-	if (alarm.item.acLine) {
-		sList[sCount++] = "acLine";
+	if (alarm.item.relayOff) {
+		sList[sCount++] = "relay_off";
 	}
-	if (alarm.item.highTemp) {
-		sList[sCount++] = "highTemp";
+	if (alarm.item.relayOn) {
+		sList[sCount++] = "relay_on";
 	}
-	if (alarm.item.overload) {
-		sList[sCount++] = "overload";
+	if (alarm.item.gfci) {
+		sList[sCount++] = "gfci";
 	}
-	if (alarm.item.underload) {
-		sList[sCount++] = "underload";
+	if (alarm.item.temp) {
+		sList[sCount++] = "hi_temp";
 	}
-#endif
 
 	return cJSON_CreateStringArray(sList, sCount);
 }
@@ -495,10 +494,10 @@ static esp_err_t readStatus(drvCtrl_t* pCtrl, appEmtrStatus_t* ret)
 	//         6   Reserved
 	//         5   Reserved
 	//         4   Reserved
-	//         3   Reserved
-	//         2   Reserved
-	//         1   Reserved
-	//         0   Reserved
+	//         3   High temperature
+	//         2   High leakage current
+	//         1   Relay stuck on
+	//         0   Relay stuck off
 	//    3  Temperature (degrees C)
 
 	// Decode relay state
@@ -523,28 +522,29 @@ static esp_err_t readStatus(drvCtrl_t* pCtrl, appEmtrStatus_t* ret)
 	// Map the alarm bit mask to the flags structure
 	appEmtrAlarm_t*	rFlag = &ret->alarm.flags;
 
-	rFlag->item.resvd_7  = (alarms >> 7) & 1;
-	rFlag->item.resvd_6  = (alarms >> 6) & 1;
-	rFlag->item.resvd_5  = (alarms >> 5) & 1;
-	rFlag->item.resvd_4  = (alarms >> 4) & 1;
-	rFlag->item.resvd_3  = (alarms >> 3) & 1;
-	rFlag->item.resvd_2  = (alarms >> 2) & 1;
-	rFlag->item.resvd_1  = (alarms >> 1) & 1;
-	rFlag->item.resvd_0  = (alarms >> 0) & 1;
+	//rFlag->item.resvd_7  = (alarms >> 7) & 1;
+	//rFlag->item.resvd_6  = (alarms >> 6) & 1;
+	//rFlag->item.resvd_5  = (alarms >> 5) & 1;
+	//rFlag->item.resvd_4  = (alarms >> 4) & 1;
+	rFlag->item.temp      = (alarms >> 3) & 1;
+	rFlag->item.gfci      = (alarms >> 2) & 1;
+	rFlag->item.relayOn   = (alarms >> 1) & 1;
+	rFlag->item.relayOff  = (alarms >> 0) & 1;
 
 	// Unpack the temperature
 	ret->tempC = resp[3];
 
 	// Enable this block to print changes in flag bits
-#if 0
-	static uint8_t	oldFlags = 0xff;
+#if 1
+	static uint8_t	oldAlarms = 0xff;
 
-	if (oldFlags != flags) {
-		oldFlags = flags;
+	if (oldAlarms != alarms) {
+		oldAlarms = alarms;
 
 		const char *	flagList[8];
 		int				flagCt = 0;
 
+#if 0
 		if (rFlag->item.resvd_7)
 			flagList[flagCt++] = "rsvd-7";
 		if (rFlag->item.resvd_6)
@@ -553,14 +553,15 @@ static esp_err_t readStatus(drvCtrl_t* pCtrl, appEmtrStatus_t* ret)
 			flagList[flagCt++] = "rsvd-5";
 		if (rFlag->item.resvd_4)
 			flagList[flagCt++] = "rsvd-4";
-		if (rFlag->item.resvd_3)
-			flagList[flagCt++] = "rsvd-3";
-		if (rFlag->item.resvd_2)
-			flagList[flagCt++] = "rsvd-2";
-		if (rFlag->item.resvd_1)
-			flagList[flagCt++] = "rsvd-1";
-		if (rFlag->item.resvd_0)
-			flagList[flagCt++] = "rsvd-0";
+#endif
+		if (rFlag->item.temp)
+			flagList[flagCt++] = "temp";
+		if (rFlag->item.gfci)
+			flagList[flagCt++] = "gfci";
+		if (rFlag->item.relayOn)
+			flagList[flagCt++] = "relay_on";
+		if (rFlag->item.relayOff)
+			flagList[flagCt++] = "relay_off";
 
 		char	flagStr[60] = {'\0'};
 		int		i;
@@ -572,7 +573,7 @@ static esp_err_t readStatus(drvCtrl_t* pCtrl, appEmtrStatus_t* ret)
 			strcat(flagStr, flagList[i]);
 		}
 
-		ESP_LOGD(TAG, "Alarm flags: %02X [%s]", flags, flagStr);
+		ESP_LOGI(TAG, "Alarm flags: %02X [%s]", alarms, flagStr);
 	}
 #endif
 

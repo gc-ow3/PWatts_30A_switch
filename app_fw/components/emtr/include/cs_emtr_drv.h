@@ -330,6 +330,7 @@ typedef esp_err_t (* csEmtrDrvCbSetHcci_t)(
 typedef struct {
 	char			appTag;
 	struct {
+		uint64_t	fwUpdate   : 1;
 		uint64_t	plugDetect : 1;
 		uint64_t	loadDetect : 1;
 		uint64_t	hcci       : 1;
