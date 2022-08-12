@@ -277,6 +277,42 @@ static esp_err_t modulesInit(void)
 	return ESP_OK;
 }
 
+static void printAlarms(appEmtrAlarm_t alarms, char* buf, int bufSz)
+{
+	const char *	flagList[8];
+	int				flagCt = 0;
+
+#if 0
+	if (alarms.resvd_7)
+		flagList[flagCt++] = "rsvd-7";
+	if (alarms.resvd_6)
+		flagList[flagCt++] = "rsvd-6";
+	if (alarms.resvd_5)
+		flagList[flagCt++] = "rsvd-5";
+	if (alarms.resvd_4)
+		flagList[flagCt++] = "rsvd-4";
+#endif
+	if (alarms.item.temp)
+		flagList[flagCt++] = "temp";
+	if (alarms.item.gfci)
+		flagList[flagCt++] = "gfci";
+	if (alarms.item.relayOn)
+		flagList[flagCt++] = "relay_on";
+	if (alarms.item.relayOff)
+		flagList[flagCt++] = "relay_off";
+
+	*buf = '\0';
+	int		i;
+
+	for (i = 0; i < flagCt; i++) {
+		if (i > 0) {
+			strcat(buf, ", ");
+		}
+		strcat(buf, flagList[i]);
+	}
+}
+
+
 void testTask(void* arg)
 {
 	esp_err_t	status;
@@ -293,10 +329,13 @@ void testTask(void* arg)
 
 		status = appEmtrDrvGetStatus(&eStatus);
 		if (ESP_OK == status) {
+			char alarmStr[60];
+			printAlarms(eStatus.alarm.flags, alarmStr, sizeof(alarmStr));
+
 			printf("EMTR status\r\n");
 			printf("  Relay state    : %s\r\n", eStatus.relayStatus.str);
 			printf("  Output state   : %s\r\n", eStatus.outputStatus.str);
-			printf("  Alarms         : %02x\r\n", eStatus.alarm.flags.mask);
+			printf("  Alarms         : %02x [%s]\r\n", eStatus.alarm.flags.mask, alarmStr);
 			printf("  Temperature (C): %d\r\n", eStatus.tempC);
 			printf("\r\n");
 		} else {

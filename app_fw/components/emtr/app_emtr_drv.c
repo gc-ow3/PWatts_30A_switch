@@ -535,7 +535,7 @@ static esp_err_t readStatus(drvCtrl_t* pCtrl, appEmtrStatus_t* ret)
 	ret->tempC = resp[3];
 
 	// Enable this block to print changes in flag bits
-#if 1
+#if 0
 	static uint8_t	oldAlarms = 0xff;
 
 	if (oldAlarms != alarms) {
