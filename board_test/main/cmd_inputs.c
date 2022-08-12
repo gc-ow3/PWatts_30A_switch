@@ -33,7 +33,7 @@ static int input_read(int argc, char** argv)
 	int nerrors = arg_parse(argc, argv, (void **)&inp_args);
     if (nerrors != 0) {
         arg_print_errors(stderr, inp_args.end, argv[0]);
-        return 1;
+        return ESP_FAIL;
     }
 
 	inpId_t	inpId;
@@ -46,17 +46,18 @@ static int input_read(int argc, char** argv)
 	} else if (strcmp("SW1", name) == 0) {
 		inpId = inpId_switch1;
 	} else {
-		return 1;
+		return ESP_ERR_INVALID_ARG;
 	}
 
 	inpState_t	inpState;
 
 	if (inpDrvStateRead(inpId, &inpState) != ESP_OK) {
-		return 1;
+		return ESP_FAIL;
 	}
 
-	printf("{\"active\": %s}\n", inpState ? "true" : "false");
-    return 0;
+	printf("{\"active\": %s}\n", (inpState == inpState_active) ? "true" : "false");
+
+	return ESP_OK;
 }
 
 

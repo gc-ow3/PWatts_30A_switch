@@ -28,6 +28,7 @@
 #include "cmd_tester.h"
 #include "cmd_serial.h"
 #include "cmd_ble.h"
+#include "cmd_emtr.h"
 
 const char	testFwVersion[] = {"0.1.0"};
 
@@ -86,6 +87,7 @@ void app_main()
 
     // Initialize command handlers
     initialize_leds();
+    initialize_emtr();
     initialize_inputs();
     initialize_serial();
     initialize_ble();
@@ -98,6 +100,7 @@ void app_main()
     register_inputs();
     register_serial();
     register_ble();
+    register_emtr();
 
     linenoiseSetDumbMode(1);
     const char* prompt = "[cmd]>";

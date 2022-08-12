@@ -37,13 +37,10 @@ static int led_set(ledId_t led, int argc, char** argv)
 	int nerrors = arg_parse(argc, argv, (void **)&led_set_args);
 	if (nerrors != 0) {
 		arg_print_errors(stderr, led_set_args.end, argv[0]);
-		return 1;
+		return ESP_FAIL;
 	}
 
-	if (led_set_args.mode->count <= 0) {
-		return 1;
-	}
-	const char *	mode = led_set_args.mode->sval[0];
+	const char*	mode = led_set_args.mode->sval[0];
 
 	// Apply changes to bit mask per command
 	if (strcmp("OFF", mode) == 0) {
@@ -56,7 +53,7 @@ static int led_set(ledId_t led, int argc, char** argv)
 		ledDrvSetMode(led, ledMode_blu);
 	} else {
 		// Invalid mode
-		return 1;
+		return ESP_ERR_INVALID_ARG;
 	}
 
 	return 0;

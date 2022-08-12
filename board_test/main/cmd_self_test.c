@@ -17,17 +17,18 @@
 
 static int cmd_cpuid(int argc, char** argv)
 {
+	esp_err_t	status;
 	uint8_t	macBin[6];
 
-	if (esp_efuse_mac_get_default(macBin) == ESP_OK) {
-		char	macStr[16];
-		csBinToHex8(macBin, 6, macStr, sizeof(macStr));
-		printf("%s\n", macStr);
-	} else {
-        printf("FAIL\n");
+	if ((status = esp_efuse_mac_get_default(macBin)) != ESP_OK) {
+		return status;
 	}
 
-	return 0;
+	char	macStr[16];
+	csBinToHex8(macBin, 6, macStr, sizeof(macStr));
+	printf("{\"cpu_id\": %s}\n", macStr);
+
+	return ESP_OK;
 }
 
 static const esp_console_cmd_t	cmdTab[] = {

@@ -18,9 +18,11 @@
 #include <esp_console.h>
 #include <argtable3/argtable3.h>
 #include <esp_err.h>
+#include <cJSON.h>
 
-#include "cs_binhex.h"
-#include "cs_packer.h"
+//#include "cs_binhex.h"
+//#include "cs_packer.h"
+#include "app_emtr_drv.h"
 #include "app_emtr_cal.h"
 #include "cmd_emtr.h"
 
@@ -55,55 +57,43 @@ void initialize_emtr(void)
 
 static int cmd_read_emtr_ver(int argc, char** argv)
 {
-	if (!emtrIsInitialized)
-		return 1;
+	if (!emtrIsInitialized) {
+		return ESP_ERR_INVALID_STATE;
+	}
 
 	const char*	bl = csEmtrDrvBlVersion();
 	const char*	fw = csEmtrDrvFwVersion();
 
-	printf("BL:%s,FW:%s\n", bl, fw);
-	return 0;
+	printf("{\"bl\":%s, \"app\":%s}\n", bl, fw);
+
+	return ESP_OK;
 }
 
 
 static int cmd_read_energy(int argc, char** argv)
 {
-	if (!emtrIsInitialized)
-		return 1;
+	if (!emtrIsInitialized) {
+		return ESP_ERR_INVALID_STATE;
+	}
 
 	appEmtrInstant_t	inst;
-	if (appEmtrDrvGetInstValues(&inst) == ESP_OK) {
-		printf(
-			"%.2f, %.3f, %.3f, %.3f, %u\n",
-			((float)inst.dVolts)/10.0,
-			((float)inst.mAmps)/1000.0,
-			((float)inst.dWatts)/10.0,
-			((float)inst.pFactor)/100.0,
-			inst.relayOnSecs
-		);
-		return 0;
+	if (appEmtrDrvGetInstant(&inst) != ESP_OK) {
+		return 1;
 	}
 
-	return 1;
-}
+	cJSON*	jObj = cJSON_CreateObject();
 
+	cJSON_AddNumberToObject(jObj, "volts", ((float)inst.dVolts)/10.0);
+	cJSON_AddNumberToObject(jObj, "amps", ((float)inst.mAmps)/1000.0);
+	cJSON_AddNumberToObject(jObj, "watts", ((float)inst.dWatts)/10.0);
+	cJSON_AddNumberToObject(jObj, "pf", ((float)inst.pFactor)/100.0);
 
-static int cmd_save_cal(int argc, char** argv)
-{
-	if (!emtrIsInitialized)
-		return ESP_ERR_INVALID_STATE;
+	char*	jStr = cJSON_PrintUnformatted(jObj);
+	cJSON_Delete(jObj);
+	printf("%s\n", jStr);
+	cJSON_free(jStr);
 
-	// Command send back the calibration data structure
-	uint8_t	calData[32];
-	int		calLen = sizeof(calData);
-
-	if (appEmtrCalibrationDataSave(calData, &calLen) == ESP_OK) {
-		if (decodeCalData(calData, calLen) == ESP_OK) {
-			return 0;
-		}
-	}
-
-	return 1;
+	return ESP_OK;
 }
 
 
@@ -116,53 +106,58 @@ static esp_err_t decodeCalData(uint8_t * buf, int bufSz)
 		return status;
 	}
 
-	printf(
-		"%.4f, %.4f, %u\n",
-		cal.uGain, cal.iGain, cal.hcci
-	);
+	cJSON*	jObj = cJSON_CreateObject();
 
-	return ESP_OK;
+	cJSON_AddNumberToObject(jObj, "u_gain", cal.uGain);
+	cJSON_AddNumberToObject(jObj, "i_gain", cal.iGain);
+	// ToDo leakage gain
+
+	char*	jStr = cJSON_PrintUnformatted(jObj);
+	cJSON_Delete(jObj);
+	printf("%s\n", jStr);
+	cJSON_free(jStr);
+
+	return 0;
+}
+
+
+static int cmd_save_cal(int argc, char** argv)
+{
+	if (!emtrIsInitialized) {
+		return ESP_ERR_INVALID_STATE;
+	}
+
+	// Command send back the calibration data structure
+	uint8_t	calData[32];
+	int		calLen = sizeof(calData);
+
+	esp_err_t	status;
+
+	if ((status = appEmtrCalibrationDataSave(calData, &calLen)) != ESP_OK) {
+		return status;
+	}
+
+	return decodeCalData(calData, calLen);
 }
 
 
 static int cmd_read_cal(int argc, char** argv)
 {
-	if (!emtrIsInitialized)
+	if (!emtrIsInitialized) {
 		return ESP_ERR_INVALID_STATE;
+	}
 
 	uint8_t	calData[64];
 	int		calLen = sizeof(calData);
 
-	if (appEmtrCalibrationDataRead(calData, &calLen) == ESP_OK) {
-		if (decodeCalData(calData, calLen) == ESP_OK) {
-			return 0;
-		}
+	esp_err_t	status;
+
+	if ((status = appEmtrCalibrationDataRead(calData, &calLen)) != ESP_OK) {
+		return status;
 	}
 
-	return 1;
+	return decodeCalData(calData, calLen);
 }
-
-#if 0
-static int cmd_read_alarms(int argc, char** argv)
-{
-	if (!emtrIsInitialized)
-		return ESP_ERR_INVALID_STATE;
-
-	wwPumpStatus_t	pump;
-
-	if (wwPumpDrvGetStatus(&pump) == ESP_OK) {
-		cJSON *	jObj = cJSON_CreateObject();
-		cJSON_AddItemToObject(jObj, "alarms", wwPumpDrvAlarmListJson(pump.alarm.flags));
-		char *	jStr = cJSON_PrintUnformatted(jObj);
-		cJSON_Delete(jObj);
-		printf("%s\n", jStr);
-		cJSON_free(jStr);
-		return 0;
-	}
-
-	return 1;
-}
-#endif
 
 static struct {
 	struct arg_dbl	*gain;
@@ -172,27 +167,22 @@ static struct {
 
 static int _set_gain(emtrCalType_t calType, int argc, char ** argv)
 {
-	if (!emtrIsInitialized)
-		return 1;
+	if (!emtrIsInitialized) {
+		return ESP_ERR_INVALID_STATE;
+	}
 
-	printf("parse gain args\r\n");
+	//printf("parse gain args\r\n");
 
 	int nerrors = arg_parse(argc, argv, (void **) &gain_args);
     if (nerrors != 0) {
         arg_print_errors(stderr, gain_args.end, argv[0]);
-        return 1;
+        return ESP_FAIL;
     }
 
-    if (gain_args.gain->count > 0) {
-        double gainVal = gain_args.gain->dval[0];
+    double gainVal = gain_args.gain->dval[0];
 
-    	printf("Call appEmtrCalibrateSetGain\r\n");
-    	if (appEmtrCalibrateSetGain(calType, (float)gainVal) == ESP_OK) {
-    		return 0;
-    	}
-    }
-
-	return 1;
+    //printf("Call appEmtrCalibrateSetGain\r\n");
+   	return appEmtrCalibrateSetGain(calType, (float)gainVal);
 }
 
 
@@ -208,28 +198,60 @@ static int cmd_set_i_gain(int argc, char** argv)
 }
 
 
-#if 0
-static int cmd_triac_on(int argc, char** argv)
+static struct {
+	struct arg_str	*mode;
+	struct arg_end	*end;
+} relay_set_args;
+
+
+static int cmd_relay_set(int argc, char** argv)
 {
-	wwPumpDrvFactoryTest(wwPumpTestId_triacOn, 60);
-	return 0;
+	if (!emtrIsInitialized) {
+		return ESP_ERR_INVALID_STATE;
+	}
+
+	int nerrors = arg_parse(argc, argv, (void **) &relay_set_args);
+    if (nerrors != 0) {
+        arg_print_errors(stderr, gain_args.end, argv[0]);
+        return ESP_FAIL;
+    }
+
+    const char*	modeStr = relay_set_args.mode->sval[0];
+    bool	mode;
+
+    if (strcmp(modeStr, "ON") == 0) {
+    	mode = true;
+    } else if (strcmp(modeStr, "OFF") == 0) {
+    	mode = false;
+    } else {
+    	return ESP_ERR_INVALID_ARG;
+    }
+
+    return appEmtrDrvSetRelay(mode);
 }
 
-
-static int cmd_line_relay_on(int argc, char** argv)
+static int cmd_read_alarms(int argc, char** argv)
 {
-	wwPumpDrvFactoryTest(wwPumpTestId_lineRelayOn, 60);
-	return 0;
+	if (!emtrIsInitialized) {
+		return ESP_ERR_INVALID_STATE;
+	}
+
+	esp_err_t		status;
+	appEmtrStatus_t	emtr;
+
+	if ((status = appEmtrDrvGetStatus(&emtr)) != ESP_OK) {
+		return status;
+	}
+
+	cJSON*	jObj = cJSON_CreateObject();
+	cJSON_AddItemToObject(jObj, "alarms", appEmtrDrvAlarmListJson(emtr.alarm.value));
+	char*	jStr = cJSON_PrintUnformatted(jObj);
+	cJSON_Delete(jObj);
+	printf("%s\n", jStr);
+	cJSON_free(jStr);
+
+	return ESP_OK;
 }
-
-
-static int cmd_neutral_relay_off(int argc, char** argv)
-{
-	wwPumpDrvFactoryTest(wwPumpTestId_neutralRelayOff, 60);
-	return 0;
-}
-#endif
-
 
 const static esp_console_cmd_t cmdTab[] = {
 	{
@@ -270,18 +292,12 @@ const static esp_console_cmd_t cmdTab[] = {
 		.hint = NULL,
 		.func = cmd_read_cal,
 	},
-#if 0
 	{
-		.command = "EMTR-TRIAC-ON",
-		.help = "Turn on the triac.",
-		.hint = NULL,
-		.func = cmd_triac_on
-	},
-	{
-		.command = "EMTR-LINE-RELAY-ON",
-		.help = "Turn on the line relay.",
-		.hint = NULL,
-		.func = cmd_line_relay_on
+		.command = "EMTR-SET-RELAY",
+		.help     = "Turn the relay on/off.",
+		.hint     = NULL,
+		.func     = cmd_relay_set,
+		.argtable = &relay_set_args
 	},
 	{
 		.command = "EMTR-READ-ALARMS",
@@ -289,7 +305,6 @@ const static esp_console_cmd_t cmdTab[] = {
 		.hint     = NULL,
 		.func     = cmd_read_alarms
 	}
-#endif
 };
 static const int cmdTabSz = sizeof(cmdTab) / sizeof(esp_console_cmd_t);
 
@@ -301,6 +316,9 @@ void register_emtr(void)
 
 	gain_args.gain = arg_dbl1(NULL, NULL, "<gain>", "floating point value 0.0 to 0.999(9)");
 	gain_args.end  = arg_end(1);
+
+	relay_set_args.mode = arg_str1(NULL, NULL, "<ON|OFF>", "Set relay mode");
+	relay_set_args.end = arg_end(1);
 
 	for (i = 0, cmd = cmdTab; i < cmdTabSz; i++, cmd++) {
 	    ESP_ERROR_CHECK( esp_console_cmd_register(cmd) );

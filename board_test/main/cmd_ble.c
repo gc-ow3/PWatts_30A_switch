@@ -71,19 +71,13 @@ static void bleCbSetMTU(esp_gatts_cb_event_t event, esp_gatt_if_t p_gatts_if, es
 }
 
 static esp_err_t ble_on(int argc, char **argv){
-    esp_err_t err;   
-
     int nerrors = arg_parse(argc, argv, (void **)&ble_args);
     if (nerrors != 0) {
         arg_print_errors(stderr, ble_args.end, argv[0]);
-        return 1;
+        return ESP_FAIL;
     }   
     
-    if (ble_args.sid->count) {
-        ESP_LOGI(__func__, "SID is '%04X'", ble_args.sid->ival[0]);
-    } else{
-        return 1;
-    }
+    uint16_t	sid = (uint16_t)ble_args.sid->ival[0];
 
     uint8_t service_uuid128[16] = {
         /* LSB <--------------------------------------------------------------------------------> MSB */
@@ -91,11 +85,11 @@ static esp_err_t ble_on(int argc, char **argv){
         0xfb, 0x34, 0x9b, 0x5f, 0x80, 0x00, 0x00, 0x80, 0x00, 0x10, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00,
     };
 
-    service_uuid128[12] = (uint8_t)(ble_args.sid->ival[0] >> 0);
-    service_uuid128[13] = (uint8_t)(ble_args.sid->ival[0] >> 8);
+    service_uuid128[12] = (uint8_t)(sid >> 0);
+    service_uuid128[13] = (uint8_t)(sid >> 8);
 
     static char	ble_device_name[32];
-    snprintf(ble_device_name, sizeof(ble_device_name), "AQUARIAN-%04X", ble_args.sid->ival[0]);
+    snprintf(ble_device_name, sizeof(ble_device_name), "PW-IWO-%04X", sid);
 
     /* The length of adv data must be less than 31 bytes */
     esp_ble_adv_data_t adv_data = {
@@ -122,6 +116,8 @@ static esp_err_t ble_on(int argc, char **argv){
         .channel_map         = ADV_CHNL_ALL,
         .adv_filter_policy   = ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY,
     };
+
+    esp_err_t err;
 
     // Initialize NVS.
     err = nvs_flash_init();

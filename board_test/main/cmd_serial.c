@@ -47,7 +47,7 @@ static int cmd_ser_mode(int argc, char** argv)
 	int nerrors = arg_parse(argc, argv, (void **)&ser_mode_args);
 	if (nerrors != 0) {
 		arg_print_errors(stderr, ser_mode_args.end, argv[0]);
-		return 1;
+		return ESP_FAIL;
 	}
 
 	int	chan = ser_mode_args.chan->ival[0];
@@ -58,8 +58,7 @@ static int cmd_ser_mode(int argc, char** argv)
 	} else if (2 == chan) {
 		port = UART_NUM_2;
 	} else {
-		ESP_LOGE(TAG, "Invalid channel (%d)", chan);
-		return 1;
+		return ESP_ERR_INVALID_ARG;
 	}
 
 	int	uartIdx = chan - 1;
@@ -81,8 +80,7 @@ static int cmd_ser_mode(int argc, char** argv)
 	} else if (strcmp(mode, "off") == 0) {
 		newMode = uartMode_off;
 	} else {
-		ESP_LOGE(TAG, "Invalid selected mode (%s)", mode);
-		return 1;
+		return ESP_ERR_INVALID_ARG;
 	}
 
 	if (newMode == uartMode[uartIdx]) {
@@ -95,23 +93,22 @@ static int cmd_ser_mode(int argc, char** argv)
 		} else if (uartMode_loop == uartMode[uartIdx]) {
 			uartLoopStop(port);
 		} else {
-			ESP_LOGE(TAG, "Invalid current mode (%d)", uartMode[uartIdx]);
-			return 1;
+			return ESP_ERR_INVALID_ARG;
 		}
 	} else if (uartMode_off != uartMode[uartIdx]) {
 		ESP_LOGE(TAG, "Current mode active (%d)", uartMode[uartIdx]);
-		return 1;
+		return ESP_FAIL;
 	} else if (uartMode_spy == newMode) {
 		uartSpyStart(port, baud);
 	} else if (uartMode_loop == newMode) {
 		uartLoopStart(port, baud);
 	} else {
-		ESP_LOGE(TAG, "Invalid new mode (%d)", newMode);
-		return 1;
+		return ESP_ERR_INVALID_ARG;
 	}
 
 	uartMode[uartIdx] = newMode;
-	return 0;
+
+	return ESP_OK;
 }
 
 

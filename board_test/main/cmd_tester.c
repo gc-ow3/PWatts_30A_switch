@@ -19,8 +19,9 @@ extern const char	testFwVersion[];
 
 static int cmd_read_ver(int argc, char** argv)
 {
-	printf("%s\n", testFwVersion);
-	return 0;
+	printf("{\"ver\": %s}\n", testFwVersion);
+
+	return ESP_OK;
 }
 
 
