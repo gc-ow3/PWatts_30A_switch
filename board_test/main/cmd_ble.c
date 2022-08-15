@@ -78,10 +78,6 @@ static esp_err_t ble_on(int argc, char **argv){
 		.nu_lookup = nuLookup
     };
 
-    // Patch in the custom SID
-    conf.service_uuid[12] = (uint8_t)(sid >> 0);
-    conf.service_uuid[13] = (uint8_t)(sid >> 8);
-
     // Patch in the device name
     snprintf(conf.device_name, MAX_BLE_DEVNAME_LEN, "PW-IWO-%04X", sid);
 

@@ -26,7 +26,7 @@
 #include "cmd_inputs.h"
 #include "cmd_self_test.h"
 #include "cmd_tester.h"
-#include "cmd_serial.h"
+//#include "cmd_serial.h"
 #include "cmd_ble.h"
 #include "cmd_emtr.h"
 
@@ -107,7 +107,7 @@ void app_main()
     initialize_leds();
     initialize_emtr();
     initialize_inputs();
-    initialize_serial();
+    //initialize_serial();
     initialize_ble();
 
     // Register command handlers
@@ -116,7 +116,7 @@ void app_main()
     register_self_test();
     register_leds();
     register_inputs();
-    register_serial();
+    //register_serial();
     register_ble();
     register_emtr();
 
