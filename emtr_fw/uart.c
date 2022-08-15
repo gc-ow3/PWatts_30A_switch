@@ -130,13 +130,14 @@ void Send0x00id(void)
 void Send0x01Status(void)
 {
 #ifdef CMD_DEBUG
-	MY_DEBUG("[0x01] %d %d %d\n", inst_vals.relay_status, inst_vals.alarm_status, inst_vals.temperature);
+	MY_DEBUG("[0x01] relay=%d output=%d alarm=%02X temp=%d C\n", inst_vals.relay_status, inst_vals.output_status, inst_vals.alarm_status, inst_vals.temperature);
 #else
 	uint8 idx = 0;
 	txBuf[idx++]=SOP;
 	txBuf[idx++]=0x01;				// cmd code
 	txBuf[idx++]=0x00;				// payload len
 	txBuf[idx++]=inst_vals.relay_status;
+	txBuf[idx++]=inst_vals.output_status;
 	txBuf[idx++]=inst_vals.alarm_status;
 	txBuf[idx++]=inst_vals.temperature;
 	txBuf[idx++]=0x00;				// CS control sum, filled in by the interrupt code
@@ -149,7 +150,7 @@ void Send0x01Status(void)
 void Send0x02Totals(void)
 {
 #ifdef CMD_DEBUG
-	MY_DEBUG("[0x02] epoch=%u on=%u cycles=%u wh=%u\n", emtr_struct.epoch, emtr_struct.pump_epoch, emtr_struct.relay_cycles, emtr_struct.wh);
+	MY_DEBUG("[0x02] epoch=%u relay_epoch=%u cycles=%u wh=%u\n", emtr_struct.epoch, emtr_struct.relay_epoch, emtr_struct.relay_cycles, emtr_struct.wh);
 #else
 	uint8 idx = 0;
 	txBuf[idx++]=SOP;
@@ -159,10 +160,10 @@ void Send0x02Totals(void)
 	txBuf[idx++]=(emtr_struct.epoch>>16)&0xff;
 	txBuf[idx++]=(emtr_struct.epoch>> 8)&0xff;
 	txBuf[idx++]=(emtr_struct.epoch>> 0)&0xff;
-	txBuf[idx++]=(emtr_struct.pump_epoch>>24)&0xff;
-	txBuf[idx++]=(emtr_struct.pump_epoch>>16)&0xff;
-	txBuf[idx++]=(emtr_struct.pump_epoch>> 8)&0xff;
-	txBuf[idx++]=(emtr_struct.pump_epoch>> 0)&0xff;
+	txBuf[idx++]=(emtr_struct.relay_epoch>>24)&0xff;
+	txBuf[idx++]=(emtr_struct.relay_epoch>>16)&0xff;
+	txBuf[idx++]=(emtr_struct.relay_epoch>> 8)&0xff;
+	txBuf[idx++]=(emtr_struct.relay_epoch>> 0)&0xff;
 	txBuf[idx++]=(emtr_struct.relay_cycles>>24)&0xff;
 	txBuf[idx++]=(emtr_struct.relay_cycles>>16)&0xff;
 	txBuf[idx++]=(emtr_struct.relay_cycles>> 8)&0xff;
@@ -282,10 +283,10 @@ void SendCycles(void)
 	txBuf[idx++]=(emtr_struct.test_cycles>>16)&0xff;
 	txBuf[idx++]=(emtr_struct.test_cycles>> 8)&0xff;
 	txBuf[idx++]=(emtr_struct.test_cycles>> 0)&0xff;
-	txBuf[idx++]=(emtr_struct.pump_epoch>>24)&0xff;
-	txBuf[idx++]=(emtr_struct.pump_epoch>>16)&0xff;
-	txBuf[idx++]=(emtr_struct.pump_epoch>> 8)&0xff;
-	txBuf[idx++]=(emtr_struct.pump_epoch>> 0)&0xff;
+	txBuf[idx++]=(emtr_struct.relay_epoch>>24)&0xff;
+	txBuf[idx++]=(emtr_struct.relay_epoch>>16)&0xff;
+	txBuf[idx++]=(emtr_struct.relay_epoch>> 8)&0xff;
+	txBuf[idx++]=(emtr_struct.relay_epoch>> 0)&0xff;
 	txBuf[idx++]=0x00;				// CS control sum, filled in by the interrupt code
 	txBuf[idx++]=EOP;
 
@@ -417,7 +418,15 @@ void SendSysTest(uint8_t code)
 void SendCalibrationData(uint8_t code)
 {
 #ifdef CMD_DEBUG
+	float u_gain, i_gain;
+	int u, i;
+	u_gain = F32TODBL(calib_data.u_gain);
+	i_gain = F32TODBL(calib_data.i_gain);
+	u = u_gain*1000.;
+	i = i_gain*1000.;
 	MY_DEBUG("[%02X] u_gain=%08X i_gain=%08X\n", code, calib_data.u_gain, calib_data.i_gain);
+	MY_DEBUG("[%02X] u_gain=%5.3f i_gain=%5.3f\n", code, u_gain, i_gain);
+	MY_DEBUG("[%02X] u_gain=0.%03d i_gain=0.%03d\n", code, u, i);
 #else
 	uint8 idx=0;
 	int i;
@@ -769,7 +778,7 @@ void sendPsigHeader(uint8 reason, uint16 packets, uint8 step)
 	//power_sig.gfci_level  	= inst_vals.gfci_level;
 	power_sig.epoch			= emtr_struct.epoch;
 	power_sig.relay_cycles 	= emtr_struct.relay_cycles;
-	power_sig.pump_epoch 	= emtr_struct.pump_epoch;
+	power_sig.relay_epoch 	= emtr_struct.relay_epoch;
 	if (power_sig.cycle_len == 0) {
 		power_sig.cycle_len = 1;
 		power_sig.cycle_i = inst_vals.i;
@@ -830,10 +839,10 @@ void sendPsigHeader(uint8 reason, uint16 packets, uint8 step)
 	uart_dbg_putc_cs((power_sig.epoch >> 16) & 0xff, &power_sig.cs);
 	uart_dbg_putc_cs((power_sig.epoch >>  8) & 0xff, &power_sig.cs);
 	uart_dbg_putc_cs((power_sig.epoch >>  0) & 0xff, &power_sig.cs);
-	uart_dbg_putc_cs((power_sig.pump_epoch >> 24) & 0xff, &power_sig.cs);
-	uart_dbg_putc_cs((power_sig.pump_epoch >> 16) & 0xff, &power_sig.cs);
-	uart_dbg_putc_cs((power_sig.pump_epoch >>  8) & 0xff, &power_sig.cs);
-	uart_dbg_putc_cs((power_sig.pump_epoch >>  0) & 0xff, &power_sig.cs);
+	uart_dbg_putc_cs((power_sig.relay_epoch >> 24) & 0xff, &power_sig.cs);
+	uart_dbg_putc_cs((power_sig.relay_epoch >> 16) & 0xff, &power_sig.cs);
+	uart_dbg_putc_cs((power_sig.relay_epoch >>  8) & 0xff, &power_sig.cs);
+	uart_dbg_putc_cs((power_sig.relay_epoch >>  0) & 0xff, &power_sig.cs);
 	uart_dbg_putc_cs((power_sig.water_level >> 0) & 0xff, &power_sig.cs);
 	power_sig.gfci_level = 0;
 	uart_dbg_putc_cs((power_sig.gfci_level >> 0) & 0xff, &power_sig.cs);
@@ -935,20 +944,6 @@ void uart_task_regular_cycle(void) {
 			i2c_noirg_eeprom_erase();
 			SystemReset();
 			break;
-#if 0
-		case 0x12:  // factory test related
-			if (rxBuf[2] != 0x00) {
-				//global_cycle_type = factory_test_cycle;
-				switchToCycleType(factory_test_cycle);
-				inst_vals.relay_status = FACTORY_TEST;
-				factory_test.tmr = rxBuf[2];
-				factory_test.id  = rxBuf[3];
-				factory_test.khz = 0;
-				start_factory_test(factory_test.id);
-			}
-			Send0x12FactoryTest();
-			break;
-#endif
 		case 0x1A:
 			tmp32 = rxBuf[2];
 			tmp32 = (tmp32 << 8) | rxBuf[3];
