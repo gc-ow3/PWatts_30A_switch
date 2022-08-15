@@ -30,6 +30,8 @@
 #include "cmd_ble.h"
 #include "cmd_emtr.h"
 
+static const char*	TAG = "app_main";
+
 const char	testFwVersion[] = {"0.1.0"};
 
 static void initialize_console()
@@ -77,7 +79,23 @@ void register_tester(void);
 
 void app_main()
 {
-	nvs_flash_init();
+
+    ESP_LOGI(TAG, "Initialize NVS");
+
+    ESP_ERROR_CHECK(nvs_flash_init());
+
+    esp_err_t	err;
+
+    err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_LOGI(TAG, "Erase NVS partition");
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "NVS init error code 0x%X", err);
+        return;
+    }
 
     initialize_console();
 

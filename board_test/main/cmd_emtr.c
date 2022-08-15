@@ -301,7 +301,7 @@ const static esp_console_cmd_t cmdTab[] = {
 	},
 	{
 		.command = "EMTR-READ-ALARMS",
-		.help     = "Read fault flags.",
+		.help     = "Read alarm flags.",
 		.hint     = NULL,
 		.func     = cmd_read_alarms
 	}

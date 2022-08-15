@@ -11,28 +11,26 @@
 #include <esp_log.h>
 #include <esp_console.h>
 #include <argtable3/argtable3.h>
-#include <simple_ble.h>
 #include <nvs_flash.h>
+#include <protocomm.h>
+#include <protocomm_ble.h>
 
 #include "cmd_ble.h"
+
+static const char*	TAG = "cmd_ble";
+
+typedef struct {
+	protocomm_t*	pComm;
+	bool			isRunning;
+} control_t;
+
 
 void initialize_ble(void)
 {
 	// ToDo ?
 }
 
-
-static esp_err_t ble_off()
-{
-    esp_err_t ret = ESP_OK;
-    ret = simple_ble_stop();
-    if (ret) {
-        ESP_LOGE(__func__, "BLE stop failed");
-        return ret;
-    }
-    ret = simple_ble_deinit();
-    return ret;
-}
+static control_t	control;
 
 static struct {
     struct arg_int *sid;
@@ -40,124 +38,81 @@ static struct {
 } ble_args;
 
 
-static void bleCbRead(esp_gatts_cb_event_t event, esp_gatt_if_t p_gatts_if, esp_ble_gatts_cb_param_t *param)
+static esp_err_t testHandler(
+    uint32_t        session_id, /*!< Session ID for identifying protocomm client */
+    const uint8_t  *inbuf,      /*!< Pointer to user provided input data buffer */
+    ssize_t         inlen,      /*!< Length o the input buffer */
+    uint8_t       **outbuf,     /*!< Pointer to output buffer allocated by handler */
+    ssize_t        *outlen,     /*!< Length of the allocated output buffer */
+    void           *priv_data   /*!< Private data passed to the handler (NULL if not used) */
+)
 {
-
+	return ESP_OK;
 }
 
-static void bleCbWrite(esp_gatts_cb_event_t event, esp_gatt_if_t p_gatts_if, esp_ble_gatts_cb_param_t *param)
-{
-
-}
-
-static void bleCbExecWrite(esp_gatts_cb_event_t event, esp_gatt_if_t p_gatts_if, esp_ble_gatts_cb_param_t *param)
-{
-
-}
-
-static void bleCbConnect(esp_gatts_cb_event_t event, esp_gatt_if_t p_gatts_if, esp_ble_gatts_cb_param_t *param)
-{
-
-}
-
-static void bleCbDisconnect(esp_gatts_cb_event_t event, esp_gatt_if_t p_gatts_if, esp_ble_gatts_cb_param_t *param)
-{
-
-}
-
-static void bleCbSetMTU(esp_gatts_cb_event_t event, esp_gatt_if_t p_gatts_if, esp_ble_gatts_cb_param_t *param)
-{
-
-}
 
 static esp_err_t ble_on(int argc, char **argv){
     int nerrors = arg_parse(argc, argv, (void **)&ble_args);
     if (nerrors != 0) {
         arg_print_errors(stderr, ble_args.end, argv[0]);
         return ESP_FAIL;
-    }   
-    
+    }
+
     uint16_t	sid = (uint16_t)ble_args.sid->ival[0];
 
-    uint8_t service_uuid128[16] = {
-        /* LSB <--------------------------------------------------------------------------------> MSB */
-        //first uuid, 16bit, [12],[13] is the value
-        0xfb, 0x34, 0x9b, 0x5f, 0x80, 0x00, 0x00, 0x80, 0x00, 0x10, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00,
+    if ((control.pComm = protocomm_new()) == NULL) {
+    	return ESP_ERR_NO_MEM;
+    }
+
+    protocomm_ble_name_uuid_t	nuLookup[] = {
+    	{"test_endpoint", 0x7887}
+    };
+    int nuLookupSz = sizeof(nuLookup) / sizeof(nuLookup[0]);
+
+    protocomm_ble_config_t	conf = {
+    	.service_uuid = {
+   	        0xfb, 0x34, 0x9b, 0x5f, 0x80, 0x00, 0x00, 0x80,
+   			0x00, 0x10, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00
+    	},
+		.nu_lookup_count = nuLookupSz,
+		.nu_lookup = nuLookup
     };
 
-    service_uuid128[12] = (uint8_t)(sid >> 0);
-    service_uuid128[13] = (uint8_t)(sid >> 8);
+    // Patch in the custom SID
+    conf.service_uuid[12] = (uint8_t)(sid >> 0);
+    conf.service_uuid[13] = (uint8_t)(sid >> 8);
 
-    static char	ble_device_name[32];
-    snprintf(ble_device_name, sizeof(ble_device_name), "PW-IWO-%04X", sid);
-
-    /* The length of adv data must be less than 31 bytes */
-    esp_ble_adv_data_t adv_data = {
-        .set_scan_rsp        = false,
-        .include_name        = true,
-        .include_txpower     = true,
-        .min_interval        = 0x0006,
-        .max_interval        = 0x0010,
-        .appearance          = ESP_BLE_APPEARANCE_UNKNOWN,
-        .manufacturer_len    = 0,
-        .p_manufacturer_data = NULL,
-        .service_data_len    = 0,
-        .p_service_data      = NULL,
-        .service_uuid_len    = sizeof(service_uuid128),
-        .p_service_uuid      = service_uuid128,
-        .flag = (ESP_BLE_ADV_FLAG_GEN_DISC | ESP_BLE_ADV_FLAG_BREDR_NOT_SPT),
-    };
-
-    esp_ble_adv_params_t adv_params = {
-        .adv_int_min         = 0x20,
-        .adv_int_max         = 0x40,
-        .adv_type            = ADV_TYPE_IND,
-        .own_addr_type       = BLE_ADDR_TYPE_PUBLIC,
-        .channel_map         = ADV_CHNL_ALL,
-        .adv_filter_policy   = ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY,
-    };
+    // Patch in the device name
+    snprintf(conf.device_name, MAX_BLE_DEVNAME_LEN, "PW-IWO-%04X", sid);
 
     esp_err_t err;
 
-    // Initialize NVS.
-    err = nvs_flash_init();
-    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        err = nvs_flash_init();
-    }
-    if (err != ESP_OK) {
-        ESP_LOGE(__func__, "NVS init error code 0x%x", err);
-        return err;
+    if ((err = protocomm_ble_start(control.pComm, &conf)) != ESP_OK) {
+    	ESP_LOGE(TAG, "BLE start error 0x%x", err);
+    	protocomm_delete(control.pComm);
+    	return err;
     }
 
-    simple_ble_cfg_t *ble_config = simple_ble_init();
-    if (ble_config == NULL) {
-        ESP_LOGE(__func__, "Ran out of memory for BLE config");
-        return ESP_ERR_NO_MEM;
-    }
+    protocomm_add_endpoint(control.pComm, "test_endpoint", testHandler, NULL);
 
-    /* Set function pointers required for simple BLE layer */
-    ble_config->read_fn         = bleCbRead;
-    ble_config->write_fn        = bleCbWrite;
-    ble_config->exec_write_fn   = bleCbExecWrite;
-    ble_config->disconnect_fn   = bleCbDisconnect;
-    ble_config->connect_fn      = bleCbConnect;
-    ble_config->set_mtu_fn      = bleCbSetMTU;
-
-    /* Set parameters required for advertising */
-    ble_config->adv_data        = adv_data;
-    ble_config->adv_params      = adv_params;
-    ble_config->device_name     = ble_device_name;
-
-    err = simple_ble_start(ble_config);
-    if (err != ESP_OK) {
-        ESP_LOGE(__func__, "simple_ble_start failed w/ error code 0x%x", err);
-        simple_ble_deinit();
-        return err;
-    }
-
-    ESP_LOGD(__func__, "Waiting for client to connect ......");
+    control.isRunning = true;
     return ESP_OK;
+}
+
+static esp_err_t ble_off()
+{
+	if (!control.isRunning) {
+		return ESP_OK;
+	}
+
+    protocomm_remove_endpoint(control.pComm, "test_endpoint");
+	protocomm_ble_stop(control.pComm);
+	protocomm_delete(control.pComm);
+	control.pComm = NULL;
+
+	control.isRunning = false;
+
+	return ESP_OK;
 }
 
 static void register_ble_on() 

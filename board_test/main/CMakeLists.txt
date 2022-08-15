@@ -14,5 +14,5 @@ set(include_dirs "include")
 idf_component_register(
 	SRCS "${srcs}"
     INCLUDE_DIRS "${include_dirs}"
-    REQUIRES bt console fatfs cs_common cs_drivers cs_utils uart_test emtr
+    REQUIRES protocomm bt console fatfs cs_common cs_drivers cs_utils uart_test emtr
 )
