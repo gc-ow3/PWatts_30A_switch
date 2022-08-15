@@ -20,10 +20,10 @@ extern "C" {
 typedef union {
 	uint8_t		mask;
 	struct {
-		uint8_t	resvd_0    : 1;
-		uint8_t	resvd_1    : 1;
-		uint8_t	resvd_2    : 1;
-		uint8_t	resvd_3    : 1;
+		uint8_t	relayOff   : 1;	// output == 0 when relay == 1
+		uint8_t	relayOn    : 1;	// output == 1 when relay == 0
+		uint8_t	gfci       : 1;	// High leakage current
+		uint8_t	temp       : 1;	// High temperature
 		uint8_t	resvd_4    : 1;
 		uint8_t	resvd_5    : 1;
 		uint8_t	resvd_6    : 1;
@@ -52,7 +52,7 @@ typedef struct {
 		const char *	str;
 	}	outputStatus;
 	struct {
-		appEmtrAlarm_t	value;
+		appEmtrAlarm_t	flags;
 	} alarm;
 	uint8_t	tempC;
 } appEmtrStatus_t;

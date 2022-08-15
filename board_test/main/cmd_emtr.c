@@ -244,7 +244,7 @@ static int cmd_read_alarms(int argc, char** argv)
 	}
 
 	cJSON*	jObj = cJSON_CreateObject();
-	cJSON_AddItemToObject(jObj, "alarms", appEmtrDrvAlarmListJson(emtr.alarm.value));
+	cJSON_AddItemToObject(jObj, "alarms", appEmtrDrvAlarmListJson(emtr.alarm.flags));
 	char*	jStr = cJSON_PrintUnformatted(jObj);
 	cJSON_Delete(jObj);
 	printf("%s\n", jStr);
