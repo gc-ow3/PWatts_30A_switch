@@ -123,6 +123,8 @@ const char * appEmtrDrvStateStr(appEmtrState_t value);
 
 esp_err_t appEmtrDrvSetRelay(bool on);
 
+cJSON * appEmtrDrvAlarmListJson(appEmtrAlarm_t alarm);
+
 #ifdef __cplusplus
 }
 #endif
