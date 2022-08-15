@@ -32,7 +32,7 @@ esp_err_t appEmtrCalibrationDataSave(uint8_t * buf, int * len);
 typedef struct {
 	float		uGain;
 	float		iGain;
-	uint8_t		hcci;
+	//uint8_t		hcci;
 } appEmtrCalData_t;
 
 esp_err_t appEmtrCalibrationUnpack(uint8_t * inp, int inpLen, appEmtrCalData_t * cal);

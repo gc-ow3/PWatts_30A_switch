@@ -5,6 +5,7 @@
  *      Author: wesd
  */
 #include <esp_err.h>
+#include "cs_packer.h"
 #include "app_emtr_cal.h"
 
 //#include <esp_log.h>
@@ -60,7 +61,6 @@ esp_err_t appEmtrCalibrationDataSave(uint8_t * buf, int * len)
 
 esp_err_t appEmtrCalibrationUnpack(uint8_t * inp, int inpLen, appEmtrCalData_t * cal)
 {
-#if 0	// ToDo - update for PW
 	csPacker_t	pack;
 	uint32_t	temp32;
 
@@ -72,13 +72,8 @@ esp_err_t appEmtrCalibrationUnpack(uint8_t * inp, int inpLen, appEmtrCalData_t *
 	// Bytes 4-7: I-Gain
 	csUnpackBEU32(&pack, &temp32);
 	cal->iGain = (float)temp32 / (float)0x7fffffff;
-	// Byte 16 HCCI flag
-	csUnpackU8(&pack, &cal->hcci);
-	// Byte 17-18 atmospheric pressure mV
-	csUnpackBEU16(&pack, &cal->atmoMv);
+
+	// ToDo
 
 	return csPackStatus(&pack);
-#else
-	return ESP_ERR_INVALID_STATE;
-#endif
 }
