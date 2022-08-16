@@ -102,7 +102,8 @@ void app_main(void)
 	printf("\r\nApplication start\r\n");
 
 	// Start the LED manager first
-	ESP_ERROR_CHECK(ledDrvInit());
+	// ToDo Read the slide switch to select brightness
+	ESP_ERROR_CHECK(ledDrvInit(100));
 	ESP_ERROR_CHECK(ledDrvStart());
 
 	ledMode_t	ledMode[] = {ledMode_red, ledMode_grn, ledMode_blu};
