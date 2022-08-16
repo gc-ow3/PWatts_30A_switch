@@ -101,29 +101,28 @@ void app_main(void)
 	// Do not change this message because factory process checks for it
 	printf("\r\nApplication start\r\n");
 
-	// Start the LED manager first
-	// ToDo Read the slide switch to select brightness
+	ESP_ERROR_CHECK(inpDrvInit(NULL, NULL));
+	ESP_ERROR_CHECK(inpDrvStart());
+
 	ESP_ERROR_CHECK(ledDrvInit(100));
 	ESP_ERROR_CHECK(ledDrvStart());
 
-	ledMode_t	ledMode[] = {ledMode_red, ledMode_grn, ledMode_blu};
+	vTaskDelay(pdMS_TO_TICKS(200));
 
 	// Flash the LEDs to show boot
+	ledMode_t	ledMode[] = {ledMode_red, ledMode_grn, ledMode_blu};
 	int	i;
 	for (i = 0; i < 3; i++) {
 		ledMode_t	mode = ledMode[i];
 
-		vTaskDelay(pdMS_TO_TICKS(200));
 		ledDrvSetMode(ledId_system, mode);
 		ledDrvSetMode(ledId_ble, mode);
-
 		vTaskDelay(pdMS_TO_TICKS(200));
+
 		ledDrvSetMode(ledId_system, ledMode_off);
 		ledDrvSetMode(ledId_ble, ledMode_off);
+		vTaskDelay(pdMS_TO_TICKS(200));
 	}
-
-	ESP_ERROR_CHECK(inpDrvInit(NULL, NULL));
-	ESP_ERROR_CHECK(inpDrvStart());
 
 	// Do low-level core initialization to load manufacturing data and parameters first
 //	ESP_LOGD(TAG, "csCoreInit0");
@@ -132,6 +131,7 @@ void app_main(void)
 	// Load application manufacturing data
 //	ESP_LOGD(TAG, "appMfgDataLoad");
 //	ESP_ERROR_CHECK(appMfgDataLoad());
+
 
 	// Load application parameters
 //	ESP_LOGD(TAG, "appParamsLoad");
@@ -320,9 +320,34 @@ void testTask(void* arg)
 	inpState_t	inpState;
 	inpState_t	inpStatePrv = inpState_init;
 
+	int	delayCt = 0;
+
+	ledDrvSetMode(ledId_system, ledMode_red);
+	ledDrvSetMode(ledId_ble, ledMode_blu);
+
 	while (1)
 	{
-		vTaskDelay(pdMS_TO_TICKS(5000));
+		vTaskDelay(pdMS_TO_TICKS(100));
+
+		if (inpDrvStateRead(inpId_switch1, &inpState) == ESP_OK) {
+			if (inpStatePrv != inpState) {
+				inpStatePrv = inpState;
+
+				if (inpState_active == inpState) {
+					printf("Dim LEDs\r\n");
+					ledDrvSetBrightness(20);
+				} else {
+					printf("Bright LEDs\r\n");
+					ledDrvSetBrightness(100);
+				}
+				printf("\r\n");
+			}
+		}
+
+		if (++delayCt < 50) {
+			continue;
+		}
+		delayCt = 0;
 
 		appEmtrStatus_t		eStatus;
 
@@ -371,21 +396,6 @@ void testTask(void* arg)
 			printf("\r\n");
 		} else {
 			ESP_LOGE(TAG, "Error %d reading EMTR instant", status);
-		}
-
-		if (inpDrvStateRead(inpId_switch1, &inpState) == ESP_OK) {
-			if (inpStatePrv != inpState) {
-				inpStatePrv = inpState;
-
-				if (inpState_active == inpState) {
-					printf("Turn on relay\r\n");
-					appEmtrDrvSetRelay(true);
-				} else {
-					printf("Turn off relay\r\n");
-					appEmtrDrvSetRelay(false);
-				}
-				printf("\r\n");
-			}
 		}
 	}
 }

@@ -164,8 +164,6 @@ static void inpTask(void* arg)
 
     while (true)
     {
-    	vTaskDelay(pdMS_TO_TICKS(50));
-
     	// Check inputs for change of state
     	int	i;
     	inpCtrl_t*	inp;
@@ -186,5 +184,7 @@ static void inpTask(void* arg)
     			}
     		}
     	}
+
+    	vTaskDelay(pdMS_TO_TICKS(50));
     }
 }

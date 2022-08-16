@@ -103,7 +103,7 @@ static ledInfo_t	ledInfo[NUM_LEDS] = {
 	{
 		.id         = ledId_system,
 		.name       = "System",
-		.isDimmable = false,
+		.isDimmable = true,
 		.isRgb      = true,
 		.ledScale   = 0.26,	// Avoid 0.25, 0.50, 0.75, 1.00
 		.chanCfgRed = {
@@ -138,7 +138,7 @@ static ledInfo_t	ledInfo[NUM_LEDS] = {
 	{
 		.id         = ledId_ble,
 		.name       = "BLE",
-		.isDimmable = false,
+		.isDimmable = true,
 		.isRgb      = true,
 		.ledScale   = 0.26,	// Avoid 0.25, 0.50, 0.75, 1.00
 		.chanCfgRed = {
@@ -206,8 +206,8 @@ esp_err_t ledDrvInit(int pctBrightness)
 
 	pCtrl->pctScale = (float)pctBrightness / 100.0;
 
-	ledInfo_t *		pInfo;
-	int				ledIdx;
+	ledInfo_t*	pInfo;
+	int			ledIdx;
 
 	for (ledIdx = 0, pInfo = ledInfo; ledIdx < NUM_LEDS; ledIdx++, pInfo++) {
 		// Attach the info structure for each LED
@@ -241,6 +241,11 @@ esp_err_t ledDrvInit(int pctBrightness)
 		state->color.pctRed = 0;
 		state->color.pctGrn = 0;
 		state->color.pctBlu = 0;
+
+		ledInfo_t*	info = state->pInfo;
+		writeLedChannel(pCtrl, info, info->chanCfgRed.channel, 0);
+		writeLedChannel(pCtrl, info, info->chanCfgGrn.channel, 0);
+		writeLedChannel(pCtrl, info, info->chanCfgBlu.channel, 0);
 	}
 
 	pledCtrl = pCtrl;
@@ -318,6 +323,7 @@ esp_err_t ledDrvSetMode(ledId_t ledId, ledMode_t mode)
 		return ESP_ERR_INVALID_ARG;
 	}
 
+	state->mode = mode;
 	writeLedChannel(pCtrl, info, info->chanCfgRed.channel, state->color.pctRed);
 	writeLedChannel(pCtrl, info, info->chanCfgGrn.channel, state->color.pctGrn);
 	writeLedChannel(pCtrl, info, info->chanCfgBlu.channel, state->color.pctBlu);
@@ -351,10 +357,6 @@ esp_err_t ledDrvSetBrightness(int value)
 
 	for (ledIdx = 0, state = pCtrl->ledState; ledIdx < NUM_LEDS; ledIdx++, state++) {
 		ledInfo_t *	info = state->pInfo;
-
-		if (ledMode_off == state->mode) {
-			continue;
-		}
 
 		if (state->pInfo->isRgb) {
 			writeLedChannel(pCtrl, info, info->chanCfgRed.channel, state->color.pctRed);
