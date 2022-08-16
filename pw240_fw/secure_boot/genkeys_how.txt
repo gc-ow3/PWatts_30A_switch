@@ -1,0 +1,3 @@
+
+#openssl ecparam -name prime256v1 -genkey -noout -out pw240_prv_signing_key.pem
+#espsecure.py extract_public_key --keyfile pw240_prv_signing_key.pem pw240_pub_signing_key.bin

@@ -1,0 +1,14 @@
+# Name,   Type, SubType, Offset,  Size, Flags
+# Note: if you change the phy_init or app partition offset, make sure to change the offset in Kconfig.projbuild
+# 0x000000 - 0x000fff : reserved
+# 0x001000 - 0x00dfff : bootloader
+# 0x00e000 - 0x00efff : partition table
+nvs_keys, data, nvs_keys, 0x00f000, 0x001000
+mfg_data, data, nvs,      0x010000, 0x010000
+nvs,      data, nvs,      0x020000, 0x020000
+# 0x040000 - 0x0fdfff : Unassigned
+otadata,  data, ota,      0x0fe000, 0x002000
+factory,  app,  factory,  0x100000, 0x200000
+ota_0,    app,  ota_0,    0x300000, 0x200000
+ota_1,    app,  ota_1,    0x500000, 0x200000
+# 0x700000 - 0x7fffff : Unassigned

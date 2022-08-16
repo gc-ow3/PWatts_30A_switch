@@ -1,0 +1,9 @@
+menu "IoT8020 Specific"
+
+	config IOT8020_DEBUG
+		bool "Application-level debug"
+		default false
+		help
+			Enable application-level debug messages
+
+endmenu
